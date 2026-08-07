@@ -237,7 +237,7 @@ async function issueStudentCode(db, body, purpose) {
   const existing = queryCodes.get(key);
   if (existing && existing.sentAt + OTP_RESEND_MS > Date.now()) return { error: '验证码已发送，请稍后再试', status: 429 };
   const code = String(crypto.randomInt(100000, 1000000));
-  try { await sendVerificationCode(phone, code); } catch (error) { return { error: error.message, status: 503 }; }
+  try { await sendVerificationCode(phone, code); } catch { return { error: '验证码服务暂时不可用，请稍后重试', status: 503 }; }
   queryCodes.set(key, { code, sentAt: Date.now(), expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
   const response = { ok: true, expiresInSeconds: Math.floor(OTP_TTL_MS / 1000) };
   if (isDevelopmentTestPhone(phone) && !process.env.SMS_WEBHOOK_URL) response.developmentCode = code;
@@ -320,8 +320,8 @@ async function wechatJsConfig(pageUrl) {
 }
 
 async function verifyStudent(school, record) {
-  if (school.verificationMode === 'none') return 'not_required';
-  if (school.verificationMode !== 'api' || !process.env.SCHOOL_VERIFY_URL) return 'pending_manual';
+  if (school.verificationMode === 'none') return { status: 'not_required' };
+  if (school.verificationMode !== 'api' || !process.env.SCHOOL_VERIFY_URL) return { status: 'pending_manual' };
   try {
     const response = await fetch(process.env.SCHOOL_VERIFY_URL, {
       method: 'POST',
@@ -331,11 +331,13 @@ async function verifyStudent(school, record) {
       },
       body: JSON.stringify({ schoolCode: school.code, name: record.name, studentNo: record.studentNo })
     });
-    if (!response.ok) return 'pending_manual';
+    if (!response.ok) return { status: 'pending_manual' };
     const result = await response.json();
-    return result.eligible === true ? 'verified' : 'rejected';
+    if (result.eligible === true) return { status: 'verified' };
+    if (result.reason === 'not_found') return { status: 'rejected', error: '未查询到学生信息，请核对姓名和学号后重新提交' };
+    return { status: 'rejected', error: '学生资格不符合办理条件，无法提交服务申请' };
   } catch {
-    return 'pending_manual';
+    return { status: 'pending_manual' };
   }
 }
 
@@ -442,7 +444,7 @@ async function api(req, res, url) {
       if (new URL(pageUrl).origin !== url.origin) return json(res, 400, { error: '分流页地址无效' });
     } catch { return json(res, 400, { error: '分流页地址无效' }); }
     try { return json(res, 200, { config: await wechatJsConfig(pageUrl) }); }
-    catch (error) { return json(res, 503, { error: error.message || '微信配置获取失败' }); }
+    catch { return json(res, 503, { error: '微信小程序服务暂时不可用，请使用网页端办理' }); }
   }
 
   if (req.method === 'GET' && url.pathname.startsWith('/api/schools/') && url.pathname.endsWith('/numbers')) {
@@ -530,9 +532,12 @@ async function api(req, res, url) {
       rating: 0,
       ratingComment: ''
     };
-    if (!record.name || !record.studentNo || !validPhone(record.phone) || !record.address || !record.detail || !record.type) {
-      return json(res, 400, { error: '请完整填写姓名、学号、手机号、服务地址和需求说明' });
-    }
+    if (!record.name) return json(res, 400, { error: '请输入姓名' });
+    if (!record.studentNo) return json(res, 400, { error: '请输入学号' });
+    if (!validPhone(record.phone)) return json(res, 400, { error: '请输入正确的 11 位手机号码' });
+    if (!record.address) return json(res, 400, { error: '请输入宿舍或服务地址' });
+    if (!record.detail) return json(res, 400, { error: '请填写需求说明' });
+    if (!record.type) return json(res, 400, { error: '请选择服务项目' });
     if (!record.serviceConsent) return json(res, 400, { error: '请先同意办理、资格核验和服务履约所必需的信息处理说明' });
     if (url.pathname === '/api/orders' && record.type.includes('选号')) {
       if (!['快递配送', '上门激活', '迎新点办理'].includes(record.fulfillmentMethod)) return json(res, 400, { error: '请选择号码交付方式' });
@@ -554,13 +559,14 @@ async function api(req, res, url) {
       offer.reservedBy = record.id;
     }
     record.statusHistory.push({ status: record.status, at: record.createdAt, by: 'student' });
-    record.verificationStatus = await verifyStudent(school, record);
+    const verification = await verifyStudent(school, record);
+    record.verificationStatus = verification.status;
     if (record.verificationStatus === 'rejected') {
       if (record.selectedOfferId) {
         const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId && item.reservedBy === record.id);
         if (offer) { offer.status = 'available'; offer.reservedBy = ''; }
       }
-      return json(res, 403, { error: '学生资格核验不通过，无法提交服务申请' });
+      return json(res, 403, { error: verification.error || '学生资格核验不通过，无法提交服务申请' });
     }
     const collection = url.pathname === '/api/orders' ? db.orders : db.tickets;
     collection.push(record);
@@ -595,7 +601,9 @@ async function api(req, res, url) {
     const planName = safe(body.planName, 80);
     const monthlyFee = Number(body.monthlyFee);
     if (!db.schools.some((item) => item.code === schoolCode)) return json(res, 400, { error: '学校不存在' });
-    if (!/^1\d{2}\*{4}\d{4}$/.test(displayNumber) || !planName || !Number.isFinite(monthlyFee) || monthlyFee < 0 || monthlyFee > 9999) return json(res, 400, { error: '请填写脱敏号码、套餐名称和正确月费' });
+    if (!/^1\d{2}\*{4}\d{4}$/.test(displayNumber)) return json(res, 400, { error: '脱敏号码格式不正确，例如 138****0001' });
+    if (!planName) return json(res, 400, { error: '请输入套餐名称' });
+    if (!Number.isFinite(monthlyFee) || monthlyFee < 0 || monthlyFee > 9999) return json(res, 400, { error: '月费应为 0 至 9999 的数字' });
     if (db.numberOffers.some((item) => item.schoolCode === schoolCode && item.displayNumber === displayNumber)) return json(res, 409, { error: '该学校已存在相同号码资源' });
     const offer = { id: id('NUM'), schoolCode, displayNumber, planName, monthlyFee, status: 'available', reservedBy: '' };
     db.numberOffers.push(offer);
@@ -633,7 +641,9 @@ async function api(req, res, url) {
     const name = safe(body.name, 60);
     const servicePhone = safe(body.servicePhone, 20);
     const verificationMode = ['manual', 'api', 'none'].includes(body.verificationMode) ? body.verificationMode : 'manual';
-    if (!name || !validCode(code) || !servicePhone) return json(res, 400, { error: '请完整填写学校名称、学校代码和服务电话' });
+    if (!name) return json(res, 400, { error: '请输入学校名称' });
+    if (!validCode(code)) return json(res, 400, { error: '学校代码需为 3 至 40 位字母、数字或短横线' });
+    if (!servicePhone) return json(res, 400, { error: '请输入服务电话' });
     if (db.schools.some((school) => school.code === code)) return json(res, 409, { error: '该学校代码已存在' });
     const school = { code, name, status: 'active', servicePhone, verificationMode, scans: 0, updatedAt: new Date().toISOString() };
     db.schools.push(school);

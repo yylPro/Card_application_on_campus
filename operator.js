@@ -25,8 +25,18 @@ function showToast(message, isError = false) {
 }
 
 async function api(url, options = {}) {
-  const response = await fetch(url, options);
-  const body = await response.json();
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch {
+    throw new Error('网络连接失败，请检查网络后重试');
+  }
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    throw new Error(response.status >= 500 ? '服务暂时不可用，请稍后重试' : '服务响应异常，请稍后重试');
+  }
   if (response.status === 401) {
     location.replace('/admin/login');
     throw new Error('登录已失效');
@@ -243,13 +253,20 @@ document.getElementById('recordsTable').addEventListener('click', (event) => {
 document.getElementById('schoolForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
+  const values = Object.fromEntries(new FormData(form).entries());
+  const name = String(values.name || '').trim();
+  const code = String(values.code || '').trim();
+  const servicePhone = String(values.servicePhone || '').trim();
+  if (!name) return showToast('请输入学校名称', true);
+  if (!/^[A-Za-z0-9-]{3,40}$/.test(code)) return showToast('学校代码需为 3 至 40 位字母、数字或短横线', true);
+  if (!servicePhone) return showToast('请输入服务电话', true);
   const button = form.querySelector('[type="submit"]');
   button.disabled = true;
   try {
     await api('/api/admin/schools', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.fromEntries(new FormData(form).entries()))
+      body: JSON.stringify(values)
     });
     form.reset();
     closeModals();

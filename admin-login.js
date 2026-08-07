@@ -19,12 +19,22 @@ form.addEventListener('submit', async (event) => {
   button.disabled = true;
   button.textContent = '登录中...';
   try {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.fromEntries(new FormData(form).entries()))
-    });
-    const result = await response.json();
+    let response;
+    try {
+      response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.fromEntries(new FormData(form).entries()))
+      });
+    } catch {
+      throw new Error('网络连接失败，请检查网络后重试');
+    }
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      throw new Error(response.status >= 500 ? '登录服务暂时不可用，请稍后重试' : '登录响应异常，请稍后重试');
+    }
     if (!response.ok) throw new Error(result.error || '登录失败');
     location.replace('/admin');
   } catch (error) {

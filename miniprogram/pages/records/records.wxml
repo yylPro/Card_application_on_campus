@@ -1,1 +1,22 @@
-<view class="page"><view class="card"><view class="eyebrow">查询服务进度</view><view class="field">手机号码<input class="input" data-key="phone" type="number" maxlength="11" bindinput="setField" /></view><view class="field">短信验证码<view class="row"><input class="input" data-key="code" type="number" maxlength="6" bindinput="setField" /><button class="code-button" size="mini" bindtap="sendCode" disabled="{{countdown > 0}}">{{countdown > 0 ? countdown + ' 秒后重试' : '获取验证码'}}</button></view></view><button class="primary" bindtap="lookup">查询</button></view><view wx:for="{{records}}" wx:key="id" class="card"><text class="record-title">{{item.type}}</text><text class="muted">{{item.id}} · {{item.appointment}}</text><text class="status">{{item.statusText}}</text><text wx:if="{{item.fulfillmentMethod}}" class="muted">{{item.fulfillmentMethod}} · {{item.deliveryText}} · {{item.activationText}}</text><button wx:if="{{item.canConfirm}}" size="mini" class="confirm-button" bindtap="confirm" data-id="{{item.id}}">确认完成并评价</button><text wx:if="{{item.completionConfirmedAt}}" class="muted">已确认 · {{item.rating}} 星</text></view></view>
+<view class="page">
+  <view class="card">
+    <view class="eyebrow">查询服务进度</view>
+    <view class="field">手机号码<input class="input" data-key="phone" type="number" maxlength="11" bindinput="setField" /></view>
+    <view class="field">短信验证码
+      <view class="row">
+        <input class="input" data-key="code" type="number" maxlength="6" bindinput="setField" />
+        <button class="code-button" size="mini" bindtap="sendCode" disabled="{{countdown > 0}}">{{countdown > 0 ? countdown + ' 秒后重试' : '获取验证码'}}</button>
+      </view>
+    </view>
+    <button class="primary" bindtap="lookup">查询</button>
+  </view>
+  <view wx:if="{{emptyMessage}}" class="card muted">{{emptyMessage}}</view>
+  <view wx:for="{{records}}" wx:key="id" class="card">
+    <text class="record-title">{{item.type}}</text>
+    <text class="muted">{{item.id}} · {{item.appointment}}</text>
+    <text class="status">{{item.statusText}}</text>
+    <text wx:if="{{item.fulfillmentMethod}}" class="muted">{{item.fulfillmentMethod}} · {{item.deliveryText}} · {{item.activationText}}</text>
+    <button wx:if="{{item.canConfirm}}" size="mini" class="confirm-button" bindtap="confirm" data-id="{{item.id}}">确认完成并评价</button>
+    <text wx:if="{{item.completionConfirmedAt}}" class="muted">已确认 · {{item.rating}} 星</text>
+  </view>
+</view>

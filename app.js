@@ -10,18 +10,31 @@ const completionForm = document.getElementById('completionForm');
 let school = null;
 let selectedService = { title: '校园网账号预约', kind: 'order' };
 
+async function readJson(response, fallback) {
+  try {
+    return await response.json();
+  } catch {
+    throw new Error(response.status >= 500 ? '服务暂时不可用，请稍后重试' : fallback);
+  }
+}
+
+function userError(error, fallback = '操作未完成，请稍后重试') {
+  if (error instanceof TypeError) return '网络连接失败，请检查网络后重试';
+  return error?.message || fallback;
+}
+
 async function loadNumberOffers() {
   const select = document.getElementById('numberOfferSelect');
   select.replaceChildren(new Option('正在加载可选号码...', ''));
   try {
     const response = await fetch(`/api/schools/${encodeURIComponent(schoolCode)}/numbers`);
-    const payload = await response.json();
+    const payload = await readJson(response, '号码资源加载失败，请稍后重试');
     if (!response.ok) throw new Error(payload.error || '号码资源暂不可用');
     select.replaceChildren(new Option(payload.offers.length ? '请选择意向号码' : '当前没有可选号码', ''));
     payload.offers.forEach((offer) => select.add(new Option(`${offer.displayNumber} · ${offer.planName} · ${offer.monthlyFee} 元/月`, offer.id)));
   } catch (error) {
     select.replaceChildren(new Option('号码加载失败，请稍后重试', ''));
-    showToast(error.message, true);
+    showToast(userError(error), true);
   }
 }
 
@@ -48,7 +61,7 @@ async function requestCode(phone, purpose) {
   const response = await fetch('/api/student/code', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schoolCode, phone, purpose })
   });
-  const result = await response.json();
+  const result = await readJson(response, '验证码发送失败，请稍后重试');
   if (!response.ok) throw new Error(result.error || '验证码发送失败');
   if (result.developmentCode) showToast(`本地开发验证码：${result.developmentCode}`);
   else showToast('验证码已发送，请注意查收');
@@ -127,7 +140,7 @@ function openCompletion(recordId) {
 async function loadSchool() {
   try {
     const response = await fetch(`/api/schools/${encodeURIComponent(schoolCode)}`);
-    const payload = await response.json();
+    const payload = await readJson(response, '学校入口加载失败，请重新扫描二维码');
     if (!response.ok) throw new Error(payload.error || '学校二维码无效或已停用');
     school = payload.school;
     document.title = `${school.name} · 校园通信服务`;
@@ -136,7 +149,7 @@ async function loadSchool() {
     document.getElementById('modalSchool').textContent = `${school.name}校园通信服务`;
   } catch (error) {
     document.getElementById('schoolBadge').textContent = '学校入口无效';
-    showToast(error.message, true);
+    showToast(userError(error), true);
   }
 }
 
@@ -173,13 +186,13 @@ serviceForm.addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const result = await response.json();
+    const result = await readJson(response, '提交失败，请稍后再试');
     if (!response.ok) throw new Error(result.error || '提交失败，请稍后再试');
     serviceForm.reset();
     closeModals();
     showToast(`提交成功，服务编号：${result.record.id}`);
   } catch (error) {
-    showToast(error.message, true);
+    showToast(userError(error), true);
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = selectedService.kind === 'ticket' ? '提交工单' : '提交预约';
@@ -198,11 +211,11 @@ lookupForm.addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ schoolCode, phone: formData.get('phone'), code: formData.get('code') })
     });
-    const result = await response.json();
+    const result = await readJson(response, '查询失败，请稍后再试');
     if (!response.ok) throw new Error(result.error || '查询失败');
     renderRecords(result.records);
   } catch (error) {
-    showToast(error.message, true);
+    showToast(userError(error), true);
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = '查询进度';
@@ -217,7 +230,7 @@ document.getElementById('sendCodeButton').addEventListener('click', async () => 
     await requestCode(phone, 'query');
     startCodeCooldown(button);
   } catch (error) {
-    showToast(error.message, true);
+    showToast(userError(error), true);
     button.disabled = false;
   }
 });
@@ -230,7 +243,7 @@ document.getElementById('sendSubmitCodeButton').addEventListener('click', async 
     await requestCode(phone, 'submit');
     startCodeCooldown(button);
   } catch (error) {
-    showToast(error.message, true);
+    showToast(userError(error), true);
     button.disabled = false;
   }
 });
@@ -243,7 +256,7 @@ document.getElementById('sendCompletionCodeButton').addEventListener('click', as
     await requestCode(phone, 'confirm');
     startCodeCooldown(button);
   } catch (error) {
-    showToast(error.message, true);
+    showToast(userError(error), true);
     button.disabled = false;
   }
 });
@@ -257,12 +270,12 @@ completionForm.addEventListener('submit', async (event) => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ schoolCode, phone: lookupForm.elements.phone.value.trim(), ...Object.fromEntries(new FormData(completionForm).entries()) })
     });
-    const result = await response.json();
+    const result = await readJson(response, '确认失败，请稍后再试');
     if (!response.ok) throw new Error(result.error || '确认失败');
     closeModals();
     showToast('已确认完成，感谢您的评价');
   } catch (error) {
-    showToast(error.message, true);
+    showToast(userError(error), true);
   } finally {
     button.disabled = false;
   }

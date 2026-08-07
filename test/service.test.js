@@ -117,6 +117,7 @@ before(async () => {
     }
     if (req.method === 'POST' && req.url === '/school-verify') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
+      if (body.studentNo === 'TEST-MISSING') return res.end(JSON.stringify({ eligible: false, reason: 'not_found' }));
       return res.end(JSON.stringify({ eligible: body.name !== '拒绝学生' }));
     }
     res.writeHead(404).end();
@@ -191,6 +192,10 @@ test('学校接口核验通过后创建订单，不通过时拒绝创建', async
   const rejectedCode = await testCode(TEST_PHONES[2], 'submit', 'API-2026');
   const rejected = await request('/api/orders', { method: 'POST', body: { schoolCode: 'API-2026', name: '拒绝学生', studentNo: 'TEST-REJECTED', phone: TEST_PHONES[2], code: rejectedCode, address: '内测地址', detail: '接口拒绝测试', type: '校园网账号预约', serviceConsent: true } });
   assert.equal(rejected.response.status, 403);
+  const missingCode = await testCode(TEST_PHONES[0], 'submit', 'API-2026');
+  const missing = await request('/api/orders', { method: 'POST', body: { schoolCode: 'API-2026', name: '内测学生', studentNo: 'TEST-MISSING', phone: TEST_PHONES[0], code: missingCode, address: '内测地址', detail: '学生信息不存在测试', type: '校园网账号预约', serviceConsent: true } });
+  assert.equal(missing.response.status, 403);
+  assert.equal(missing.body.error, '未查询到学生信息，请核对姓名和学号后重新提交');
 });
 
 test('选号订单预占号码，取消后自动释放', async () => {
