@@ -1,0 +1,6 @@
+<view class="page">
+  <view class="hero"><text class="hero-kicker">{{schoolName}}专属服务</text><text class="hero-title">线上预约，线下交付</text><text class="hero-copy">选号、校园网预约、宽带报修和进度查询</text></view>
+  <view class="card"><view class="eyebrow">服务办理</view><view wx:for="{{services}}" wx:key="title" class="service-item" bindtap="openService" data-title="{{item.title}}" data-kind="{{item.kind}}"><text>{{item.title}}</text><text class="arrow">›</text></view></view>
+  <view class="card" bindtap="openRecords"><view class="service-item"><text>查询服务进度</text><text class="arrow">›</text></view></view>
+  <view class="card"><view class="eyebrow">办理流程</view><text class="muted">扫码进入 → 自助下单 → 后台传递配送/派单 → 线下实名激活或上门服务</text></view>
+</view>

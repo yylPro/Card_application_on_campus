@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>运营商登录 · 校园通信服务</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="login-page">
+    <main class="login-shell">
+      <section class="login-panel">
+        <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>校园通信服务</span></a>
+        <div class="login-copy"><p class="eyebrow">运营商后台</p><h1>登录服务管理系统</h1><p>管理学校二维码、预约订单、维护工单与服务进度。</p></div>
+        <form id="loginForm">
+          <label>账号<input name="username" autocomplete="username" required placeholder="请输入后台账号" /></label>
+          <label>密码<input name="password" type="password" autocomplete="current-password" required placeholder="请输入后台密码" /></label>
+          <button class="primary-button" type="submit">登录后台</button>
+        </form>
+        <p class="login-hint">本地初始账号：operator；密码：campus-admin-2026。部署前请通过环境变量修改。</p>
+      </section>
+    </main>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="/admin-login.js"></script>
+  </body>
+</html>
