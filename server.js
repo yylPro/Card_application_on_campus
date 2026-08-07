@@ -5,9 +5,10 @@ const crypto = require('node:crypto');
 const QRCode = require('qrcode');
 
 const ROOT = __dirname;
-const DATA_DIR = path.join(ROOT, 'data');
-const DB_FILE = path.join(DATA_DIR, 'db.json');
+const DB_FILE = process.env.DATA_FILE ? path.resolve(process.env.DATA_FILE) : path.join(ROOT, 'data', 'db.json');
+const DATA_DIR = path.dirname(DB_FILE);
 const PORT = Number(process.env.PORT || 4173);
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const ADMIN_USER = process.env.ADMIN_USER || 'operator';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'campus-admin-2026';
 const WECHAT_OFFICIAL_APP_ID = process.env.WECHAT_OFFICIAL_APP_ID || '';
@@ -18,6 +19,14 @@ const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_RESEND_MS = 60 * 1000;
 const MAX_BODY_BYTES = 200000;
+const TEST_PHONE_NUMBERS = new Set((process.env.TEST_PHONE_NUMBERS || '13800000001,13800000002,13800000003')
+  .split(',').map((phone) => phone.trim()).filter(validPhone));
+const TEST_SCHOOL_CODE = 'TEST-2026';
+const TEST_FIXTURES = [
+  { flow: '选号与线下实名激活', name: '内测新生一', studentNo: 'TEST20260001', phone: '13800000001', service: '新生选号预约' },
+  { flow: '校园网账号预约', name: '内测新生二', studentNo: 'TEST20260002', phone: '13800000002', service: '校园网账号预约' },
+  { flow: '宽带故障报修', name: '内测学生三', studentNo: 'TEST20260003', phone: '13800000003', service: '宽带故障报修' }
+];
 const sessions = new Map();
 const queryCodes = new Map();
 let wechatTicketCache = { value: '', expiresAt: 0 };
@@ -45,13 +54,26 @@ const initialDb = {
     verificationMode: 'manual',
     scans: 0,
     updatedAt: new Date().toISOString()
-  }],
+  }, ...(!IS_PRODUCTION ? [{
+    code: TEST_SCHOOL_CODE,
+    name: '校园通信内测大学',
+    status: 'active',
+    servicePhone: '10086',
+    verificationMode: 'manual',
+    scans: 0,
+    updatedAt: new Date().toISOString()
+  }] : [])],
   orders: [],
   tickets: [],
   numberOffers: [
     { id: 'XXU-1382026', schoolCode: 'XXU-2026', displayNumber: '138****2026', planName: '校园畅享套餐', monthlyFee: 39, status: 'available', reservedBy: '' },
     { id: 'XXU-1391688', schoolCode: 'XXU-2026', displayNumber: '139****1688', planName: '校园畅享套餐', monthlyFee: 39, status: 'available', reservedBy: '' },
-    { id: 'XXU-1585200', schoolCode: 'XXU-2026', displayNumber: '158****5200', planName: '青春优享套餐', monthlyFee: 59, status: 'available', reservedBy: '' }
+    { id: 'XXU-1585200', schoolCode: 'XXU-2026', displayNumber: '158****5200', planName: '青春优享套餐', monthlyFee: 59, status: 'available', reservedBy: '' },
+    ...(!IS_PRODUCTION ? [
+      { id: 'TEST-1380001', schoolCode: TEST_SCHOOL_CODE, displayNumber: '138****0001', planName: '内测选号套餐 A', monthlyFee: 0, status: 'available', reservedBy: '' },
+      { id: 'TEST-1380002', schoolCode: TEST_SCHOOL_CODE, displayNumber: '138****0002', planName: '内测选号套餐 B', monthlyFee: 0, status: 'available', reservedBy: '' },
+      { id: 'TEST-1380003', schoolCode: TEST_SCHOOL_CODE, displayNumber: '138****0003', planName: '内测选号套餐 C', monthlyFee: 0, status: 'available', reservedBy: '' }
+    ] : [])
   ]
 };
 
@@ -119,6 +141,10 @@ function validPhone(value) {
 
 function validCode(value) {
   return /^[A-Za-z0-9-]{3,40}$/.test(value);
+}
+
+function isDevelopmentTestPhone(phone) {
+  return !IS_PRODUCTION && TEST_PHONE_NUMBERS.has(phone);
 }
 
 function json(res, status, body, headers = {}) {
@@ -214,7 +240,7 @@ async function issueStudentCode(db, body, purpose) {
   try { await sendVerificationCode(phone, code); } catch (error) { return { error: error.message, status: 503 }; }
   queryCodes.set(key, { code, sentAt: Date.now(), expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
   const response = { ok: true, expiresInSeconds: Math.floor(OTP_TTL_MS / 1000) };
-  if (process.env.NODE_ENV !== 'production' && !process.env.SMS_WEBHOOK_URL) response.developmentCode = code;
+  if (isDevelopmentTestPhone(phone) && !process.env.SMS_WEBHOOK_URL) response.developmentCode = code;
   return { response, status: 200 };
 }
 
@@ -380,6 +406,19 @@ async function api(req, res, url) {
     return json(res, 200, { authenticated: Boolean(session), user: session?.user || null });
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/dev/test-fixtures') {
+    if (IS_PRODUCTION) return json(res, 404, { error: '接口不存在' });
+    const school = db.schools.find((item) => item.code === TEST_SCHOOL_CODE && item.status === 'active');
+    if (!school) return json(res, 503, { error: '内测学校尚未初始化，请执行内测数据初始化' });
+    return json(res, 200, {
+      school: publicSchool(school),
+      entryPath: `/q/${TEST_SCHOOL_CODE}`,
+      students: TEST_FIXTURES,
+      availableOffers: availableOffers(db, TEST_SCHOOL_CODE),
+      note: '仅开发和测试环境可用；测试验证码只对内测手机号显示。'
+    });
+  }
+
   if (req.method === 'GET' && url.pathname.startsWith('/api/dispatch/')) {
     const code = decodeURIComponent(url.pathname.split('/').pop());
     const school = db.schools.find((item) => item.code === code && item.status === 'active');
@@ -470,6 +509,7 @@ async function api(req, res, url) {
       selectedNumber: safe(body.selectedNumber, 30),
       selectedOfferId: safe(body.selectedOfferId, 80),
       fulfillmentMethod: safe(body.fulfillmentMethod, 30),
+      serviceConsent: body.serviceConsent === true || body.serviceConsent === 'on',
       marketingConsent: body.marketingConsent === true,
       status: 'pending',
       verificationStatus: 'pending_manual',
@@ -493,6 +533,7 @@ async function api(req, res, url) {
     if (!record.name || !record.studentNo || !validPhone(record.phone) || !record.address || !record.detail || !record.type) {
       return json(res, 400, { error: '请完整填写姓名、学号、手机号、服务地址和需求说明' });
     }
+    if (!record.serviceConsent) return json(res, 400, { error: '请先同意办理、资格核验和服务履约所必需的信息处理说明' });
     if (url.pathname === '/api/orders' && record.type.includes('选号')) {
       if (!['快递配送', '上门激活', '迎新点办理'].includes(record.fulfillmentMethod)) return json(res, 400, { error: '请选择号码交付方式' });
       const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId && item.schoolCode === schoolCode && item.status === 'available');
@@ -514,6 +555,13 @@ async function api(req, res, url) {
     }
     record.statusHistory.push({ status: record.status, at: record.createdAt, by: 'student' });
     record.verificationStatus = await verifyStudent(school, record);
+    if (record.verificationStatus === 'rejected') {
+      if (record.selectedOfferId) {
+        const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId && item.reservedBy === record.id);
+        if (offer) { offer.status = 'available'; offer.reservedBy = ''; }
+      }
+      return json(res, 403, { error: '学生资格核验不通过，无法提交服务申请' });
+    }
     const collection = url.pathname === '/api/orders' ? db.orders : db.tickets;
     collection.push(record);
     writeDb(db);

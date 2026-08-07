@@ -77,6 +77,9 @@ function setService(title, kind) {
     : '例如：希望选号、办理校园网账号或预约上门服务';
   serviceForm.querySelector('.submit-button').textContent = kind === 'ticket' ? '提交工单' : '提交预约';
   document.getElementById('numberSelection').hidden = !isNumberOrder;
+  serviceForm.elements.selectedOfferId.disabled = !isNumberOrder;
+  serviceForm.elements.selectedOfferId.required = isNumberOrder;
+  if (!isNumberOrder) serviceForm.elements.selectedOfferId.value = '';
   document.getElementById('fulfillmentNote').hidden = !isNumberOrder;
   if (isNumberOrder) loadNumberOffers();
   openModal(serviceModal);
