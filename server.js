@@ -46,7 +46,7 @@ const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_RESEND_MS = 60 * 1000;
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 const ALLOWED_OPERATORS = new Set(['中国移动', '中国联通', '中国电信']);
-const TEST_PHONE_NUMBERS = new Set((process.env.TEST_PHONE_NUMBERS || '13800000001,13800000002,13800000003')
+const TEST_PHONE_NUMBERS = new Set((process.env.TEST_PHONE_NUMBERS || '13800000001,13800000002,13800000003,13900000001,13900000002')
   .split(',').map((phone) => phone.trim()).filter(validPhone));
 const TEST_SCHOOL_CODE = 'TEST-2026';
 const UNIFIED_ENTRY_CODE = 'UNIFIED-2026';
@@ -578,6 +578,7 @@ async function api(req, res, url) {
       entryPath: `/q/${TEST_SCHOOL_CODE}`,
       students: TEST_FIXTURES,
       availableOffers: availableOffers(db, TEST_SCHOOL_CODE),
+      testPhones: [...TEST_PHONE_NUMBERS],
       note: '仅开发和测试环境可用；测试验证码只对内测手机号显示。'
     });
   }

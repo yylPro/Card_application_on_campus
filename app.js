@@ -8,6 +8,33 @@ const serviceForm = document.getElementById('serviceForm');
 const lookupForm = document.getElementById('lookupForm');
 const completionForm = document.getElementById('completionForm');
 
+const identityInput = serviceForm.elements.idCard;
+const primaryPhoneInput = serviceForm.elements.phone;
+const backupPhoneInput = serviceForm.elements.backupPhone;
+identityInput.setAttribute('minlength', '18');
+identityInput.setAttribute('maxlength', '18');
+identityInput.setAttribute('pattern', '[0-9]{17}[0-9Xx]');
+primaryPhoneInput.setAttribute('minlength', '11');
+primaryPhoneInput.setAttribute('maxlength', '11');
+primaryPhoneInput.setAttribute('pattern', '1[0-9]{10}');
+primaryPhoneInput.setAttribute('inputmode', 'numeric');
+backupPhoneInput.setAttribute('minlength', '11');
+backupPhoneInput.setAttribute('maxlength', '11');
+backupPhoneInput.setAttribute('pattern', '1[0-9]{10}');
+backupPhoneInput.setAttribute('inputmode', 'numeric');
+
+document.getElementById('nextServiceStepButton')?.addEventListener('click', (event) => {
+  const idCard = identityInput.value.trim();
+  const phone = primaryPhoneInput.value.trim();
+  const backupPhone = backupPhoneInput.value.trim();
+  const error = !/^\d{17}[\dXx]$/.test(idCard) ? '身份证号码必须为 18 位，末位可为 X'
+    : !/^1\d{10}$/.test(phone) ? '联系电话必须为 11 位数字'
+      : backupPhone && !/^1\d{10}$/.test(backupPhone) ? '备用联系电话必须为 11 位数字' : '';
+  if (!error) return;
+  event.stopImmediatePropagation();
+  showToast(error, true);
+}, true);
+
 let school = null;
 let selectedService = { title: '校园网账号预约', kind: 'order' };
 
