@@ -29,6 +29,8 @@ const TEST_FIXTURES = [
 ];
 const sessions = new Map();
 const queryCodes = new Map();
+const authAttempts = new Map();
+let mutationQueue = Promise.resolve();
 let wechatTicketCache = { value: '', expiresAt: 0 };
 const allowedStatuses = new Set(['pending', 'contacting', 'assigned', 'scheduled', 'processing', 'completed', 'cancelled']);
 const allowedVerificationStatuses = new Set(['pending_manual', 'verified', 'rejected', 'not_required']);
@@ -87,6 +89,7 @@ function normalizeDb(db) {
   db.orders = Array.isArray(db.orders) ? db.orders : [];
   db.tickets = Array.isArray(db.tickets) ? db.tickets : [];
   db.numberOffers = Array.isArray(db.numberOffers) ? db.numberOffers : [];
+  db.auditLogs = Array.isArray(db.auditLogs) ? db.auditLogs.slice(-5000) : [];
   db.schools.forEach((school) => {
     if (!Number.isFinite(school.scans)) school.scans = 0;
     if (!['manual', 'api', 'none'].includes(school.verificationMode)) school.verificationMode = 'manual';
@@ -125,6 +128,30 @@ function writeDb(db) {
   const tempFile = `${DB_FILE}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tempFile, JSON.stringify(db, null, 2), 'utf8');
   fs.renameSync(tempFile, DB_FILE);
+}
+
+function audit(db, action, actor, target, details = {}) {
+  db.auditLogs.push({ id: id('AUD'), action, actor, target, details, at: new Date().toISOString() });
+  if (db.auditLogs.length > 5000) db.auditLogs.splice(0, db.auditLogs.length - 5000);
+}
+
+function runMutation(task) {
+  const next = mutationQueue.then(task, task);
+  mutationQueue = next.catch(() => {});
+  return next;
+}
+
+function clientIp(req) {
+  return String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
+}
+
+function rateLimit(map, key, maxAttempts, windowMs) {
+  const now = Date.now();
+  const attempts = (map.get(key) || []).filter((time) => time > now - windowMs);
+  if (attempts.length >= maxAttempts) return false;
+  attempts.push(now);
+  map.set(key, attempts);
+  return true;
 }
 
 function id(prefix) {
@@ -195,6 +222,10 @@ function createSession() {
   const token = crypto.randomBytes(32).toString('hex');
   sessions.set(token, { user: ADMIN_USER, expiresAt: Date.now() + SESSION_TTL_MS });
   return token;
+}
+
+function sessionCookie(token, maxAge) {
+  return `campus_admin_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${IS_PRODUCTION ? '; Secure' : ''}`;
 }
 
 function sessionFor(req) {
@@ -377,11 +408,18 @@ async function api(req, res, url) {
   clearExpiredMemory();
   const db = readDb();
 
+  if (req.method === 'GET' && url.pathname === '/api/health') {
+    return json(res, 200, { status: 'ok', time: new Date().toISOString() });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/auth/login') {
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
     const username = safe(body.username, 60);
     const password = String(body.password || '');
+    if (!rateLimit(authAttempts, `login:${clientIp(req)}`, 8, 15 * 60 * 1000)) {
+      return json(res, 429, { error: '登录尝试次数过多，请 15 分钟后再试' });
+    }
     const expectedPassword = Buffer.from(ADMIN_PASSWORD);
     const suppliedPassword = Buffer.from(password);
     const passwordMatches = suppliedPassword.length === expectedPassword.length
@@ -390,8 +428,10 @@ async function api(req, res, url) {
       return json(res, 401, { error: '账号或密码错误' });
     }
     const token = createSession();
+    audit(db, 'auth.login', ADMIN_USER, ADMIN_USER, { ip: clientIp(req) });
+    writeDb(db);
     return json(res, 200, { user: ADMIN_USER }, {
-      'Set-Cookie': `campus_admin_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`
+      'Set-Cookie': sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000))
     });
   }
 
@@ -399,7 +439,7 @@ async function api(req, res, url) {
     const session = sessionFor(req);
     if (session) sessions.delete(session.token);
     return json(res, 200, { ok: true }, {
-      'Set-Cookie': 'campus_admin_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'
+      'Set-Cookie': sessionCookie('', 0)
     });
   }
 
@@ -570,6 +610,7 @@ async function api(req, res, url) {
     }
     const collection = url.pathname === '/api/orders' ? db.orders : db.tickets;
     collection.push(record);
+    audit(db, 'student.submitted', 'student', record.id, { schoolCode, type: record.type });
     writeDb(db);
     return json(res, 201, { record: { id: record.id, type: record.type, status: record.status, verificationStatus: record.verificationStatus } });
   }
@@ -592,6 +633,12 @@ async function api(req, res, url) {
     });
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/admin/audit-logs') {
+    if (!requireAdmin(req, res)) return;
+    const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || 100), 1), 500);
+    return json(res, 200, { logs: db.auditLogs.slice(-limit).reverse() });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/admin/number-offers') {
     if (!requireAdmin(req, res)) return;
     let body;
@@ -607,6 +654,7 @@ async function api(req, res, url) {
     if (db.numberOffers.some((item) => item.schoolCode === schoolCode && item.displayNumber === displayNumber)) return json(res, 409, { error: '该学校已存在相同号码资源' });
     const offer = { id: id('NUM'), schoolCode, displayNumber, planName, monthlyFee, status: 'available', reservedBy: '' };
     db.numberOffers.push(offer);
+    audit(db, 'number-offer.created', sessionFor(req).user, offer.id, { schoolCode, displayNumber });
     writeDb(db);
     return json(res, 201, { offer });
   }
@@ -629,6 +677,7 @@ async function api(req, res, url) {
     record.rating = rating;
     record.ratingComment = safe(body.ratingComment, 300);
     record.updatedAt = record.completionConfirmedAt;
+    audit(db, 'student.completion-confirmed', 'student', record.id, { rating: record.rating });
     writeDb(db);
     return json(res, 200, { record: { id: record.id, completionConfirmedAt: record.completionConfirmedAt, rating: record.rating } });
   }
@@ -647,6 +696,7 @@ async function api(req, res, url) {
     if (db.schools.some((school) => school.code === code)) return json(res, 409, { error: '该学校代码已存在' });
     const school = { code, name, status: 'active', servicePhone, verificationMode, scans: 0, updatedAt: new Date().toISOString() };
     db.schools.push(school);
+    audit(db, 'school.created', sessionFor(req).user, school.code, { name: school.name });
     writeDb(db);
     return json(res, 201, { school });
   }
@@ -662,6 +712,7 @@ async function api(req, res, url) {
     if (body.status) school.status = body.status;
     if (body.verificationMode && ['manual', 'api', 'none'].includes(body.verificationMode)) school.verificationMode = body.verificationMode;
     school.updatedAt = new Date().toISOString();
+    audit(db, 'school.updated', sessionFor(req).user, school.code, { status: school.status, verificationMode: school.verificationMode });
     writeDb(db);
     return json(res, 200, { school });
   }
@@ -746,6 +797,7 @@ async function api(req, res, url) {
     if (record.status !== (record.statusHistory.at(-1)?.status || '')) record.statusHistory.push({ status: record.status, at: new Date().toISOString(), by: ADMIN_USER });
     if (body.internalNote !== undefined) record.internalNote = safe(body.internalNote, 500);
     record.updatedAt = new Date().toISOString();
+    audit(db, 'record.updated', sessionFor(req).user, record.id, { status: record.status, verificationStatus: record.verificationStatus });
     writeDb(db);
     return json(res, 200, { record });
   }
@@ -781,13 +833,21 @@ function staticFile(req, res, url) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   try {
-    if (url.pathname.startsWith('/api/')) await api(req, res, url);
+    if (url.pathname.startsWith('/api/')) {
+      const handler = () => api(req, res, url);
+      if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) await runMutation(handler);
+      else await handler();
+    }
     else staticFile(req, res, url);
   } catch (error) {
     console.error(error);
     json(res, 500, { error: '服务器内部错误' });
   }
 });
+
+if (IS_PRODUCTION && ADMIN_PASSWORD === 'campus-admin-2026') {
+  throw new Error('生产环境必须通过 ADMIN_PASSWORD 设置非默认运营商密码');
+}
 
 ensureDb();
 server.listen(PORT, () => console.log(`Campus service running at http://127.0.0.1:${PORT}`));

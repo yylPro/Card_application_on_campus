@@ -148,6 +148,9 @@ after(() => {
 });
 
 test('二维码、分流、H5 与小程序入口契约可用', async () => {
+  const health = await request('/api/health');
+  assert.equal(health.response.status, 200);
+  assert.equal(health.body.status, 'ok');
   const dispatchPage = await request('/q/XXU-2026');
   assert.equal(dispatchPage.response.status, 200);
   assert.match(dispatchPage.body, /dispatch\.js/);
@@ -174,6 +177,9 @@ test('运营后台可创建学校、生成动态二维码并返回 PNG', async (
   const qr = await request('/api/admin/qr/API-2026', { cookie });
   assert.equal(qr.response.status, 200);
   assert.match(qr.response.headers.get('content-type'), /image\/png/);
+  const audit = await request('/api/admin/audit-logs?limit=20', { cookie });
+  assert.equal(audit.response.status, 200);
+  assert.ok(audit.body.logs.some((item) => item.action === 'school.created' && item.target === 'API-2026'));
 });
 
 test('短信网关、必要同意和普通预约按统一 API 执行', async () => {
@@ -208,6 +214,24 @@ test('选号订单预占号码，取消后自动释放', async () => {
   assert.equal(cancelled.response.status, 200);
   const released = await request('/api/schools/XXU-2026/numbers');
   assert.equal(released.body.offers.length, before.body.offers.length);
+});
+
+test('并发提交同一号码时只允许一个订单预占成功', async () => {
+  const offers = await request('/api/schools/XXU-2026/numbers');
+  const selectedOfferId = offers.body.offers[0].id;
+  const firstPhone = '13900000001';
+  const secondPhone = '13900000002';
+  const firstCode = await testCode(firstPhone, 'submit');
+  const secondCode = await testCode(secondPhone, 'submit');
+  const order = (phone, code, studentNo) => request('/api/orders', {
+    method: 'POST',
+    body: { schoolCode: 'XXU-2026', name: '并发测试学生', studentNo, phone, code, address: '内测宿舍', detail: '并发预占测试', type: '新生选号预约', selectedOfferId, fulfillmentMethod: '迎新点办理', serviceConsent: true }
+  });
+  const results = await Promise.all([
+    order(firstPhone, firstCode, 'CONCURRENT-01'),
+    order(secondPhone, secondCode, 'CONCURRENT-02')
+  ]);
+  assert.deepEqual(results.map((result) => result.response.status).sort(), [201, 409]);
 });
 
 test('订单状态、审计历史、学生确认和评价完整闭环', async () => {
