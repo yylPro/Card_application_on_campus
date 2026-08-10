@@ -7,6 +7,24 @@ const XLSX = require('xlsx');
 const { Storage } = require('./backend/storage');
 
 const ROOT = __dirname;
+
+function loadLocalEnv() {
+  const file = path.join(ROOT, '.env');
+  if (!fs.existsSync(file)) return;
+  for (const rawLine of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const separator = line.indexOf('=');
+    if (separator < 1) continue;
+    const key = line.slice(0, separator).trim();
+    let value = line.slice(separator + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+    if (!Object.prototype.hasOwnProperty.call(process.env, key)) process.env[key] = value;
+  }
+}
+
+// Local secrets live in .env; explicitly supplied environment variables take precedence.
+loadLocalEnv();
 const DB_FILE = process.env.DATA_FILE ? path.resolve(process.env.DATA_FILE) : path.join(ROOT, 'data', 'db.json');
 const DATA_DIR = path.dirname(DB_FILE);
 const UPLOAD_DIR = path.join(DATA_DIR, 'id-images');
