@@ -3,10 +3,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const QRCode = require('qrcode');
+const XLSX = require('xlsx');
+const { Storage } = require('./backend/storage');
 
 const ROOT = __dirname;
 const DB_FILE = process.env.DATA_FILE ? path.resolve(process.env.DATA_FILE) : path.join(ROOT, 'data', 'db.json');
 const DATA_DIR = path.dirname(DB_FILE);
+const UPLOAD_DIR = path.join(DATA_DIR, 'id-images');
+const IMPORT_DIR = process.env.IMPORT_DIR ? path.resolve(process.env.IMPORT_DIR) : path.join(ROOT, 'data', 'imports');
+const DB_DRIVER = (process.env.DB_DRIVER || 'json').toLowerCase();
+let sqlStorage = null;
+let runtimeDb = null;
 const PORT = Number(process.env.PORT || 4173);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const ADMIN_USER = process.env.ADMIN_USER || 'operator';
@@ -18,7 +25,8 @@ const WECHAT_MINIPROGRAM_HOME = process.env.WECHAT_MINIPROGRAM_HOME || 'pages/ho
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_RESEND_MS = 60 * 1000;
-const MAX_BODY_BYTES = 200000;
+const MAX_BODY_BYTES = 5 * 1024 * 1024;
+const ALLOWED_OPERATORS = new Set(['中国移动', '中国联通', '中国电信']);
 const TEST_PHONE_NUMBERS = new Set((process.env.TEST_PHONE_NUMBERS || '13800000001,13800000002,13800000003')
   .split(',').map((phone) => phone.trim()).filter(validPhone));
 const TEST_SCHOOL_CODE = 'TEST-2026';
@@ -58,7 +66,7 @@ const initialDb = {
     updatedAt: new Date().toISOString()
   }, ...(!IS_PRODUCTION ? [{
     code: TEST_SCHOOL_CODE,
-    name: '校园通信内测大学',
+    name: '校园通信服务示范大学',
     status: 'active',
     servicePhone: '10086',
     verificationMode: 'manual',
@@ -81,6 +89,7 @@ const initialDb = {
 
 function ensureDb() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
   if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify(initialDb, null, 2), 'utf8');
 }
 
@@ -89,10 +98,14 @@ function normalizeDb(db) {
   db.orders = Array.isArray(db.orders) ? db.orders : [];
   db.tickets = Array.isArray(db.tickets) ? db.tickets : [];
   db.numberOffers = Array.isArray(db.numberOffers) ? db.numberOffers : [];
+  db.numberOffers.forEach((offer) => { if (!ALLOWED_OPERATORS.has(offer.operator)) offer.operator = '中国移动'; });
   db.auditLogs = Array.isArray(db.auditLogs) ? db.auditLogs.slice(-5000) : [];
   db.schools.forEach((school) => {
     if (!Number.isFinite(school.scans)) school.scans = 0;
     if (!['manual', 'api', 'none'].includes(school.verificationMode)) school.verificationMode = 'manual';
+    if (!Array.isArray(school.colleges)) school.colleges = [];
+    if (school.code === TEST_SCHOOL_CODE && school.colleges.length === 0) school.colleges = ['信息工程学院', '通信工程学院', '经济管理学院'];
+    if (school.code === TEST_SCHOOL_CODE && /内测/.test(school.name)) school.name = '校园通信服务示范大学';
   });
   [...db.orders, ...db.tickets].forEach((record) => {
     if (!record.verificationStatus) record.verificationStatus = 'pending_manual';
@@ -104,6 +117,11 @@ function normalizeDb(db) {
     if (!Number.isFinite(record.subsidyAmount)) record.subsidyAmount = 0;
     if (!record.selectedNumber) record.selectedNumber = '';
     if (!record.selectedOfferId) record.selectedOfferId = '';
+    if (!record.idCard) record.idCard = '';
+    if (!record.college) record.college = '';
+    if (!record.backupPhone) record.backupPhone = '';
+    if (!record.idCardFrontFile) record.idCardFrontFile = '';
+    if (!record.idCardBackFile) record.idCardBackFile = '';
     if (!record.fulfillmentMethod) record.fulfillmentMethod = '';
     if (!record.channel) record.channel = 'school_qr';
     if (!record.assignee) record.assignee = '';
@@ -119,12 +137,51 @@ function normalizeDb(db) {
   return db;
 }
 
+function syncSchoolsFromWorkbook(db) {
+  if (!fs.existsSync(IMPORT_DIR)) return false;
+  const filename = fs.readdirSync(IMPORT_DIR).find((item) => /\.xlsx?$/i.test(item));
+  if (!filename) return false;
+  let rows;
+  try {
+    const workbook = XLSX.readFile(path.join(IMPORT_DIR, filename));
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  } catch (error) {
+    console.error('学校信息 Excel 读取失败:', error.message);
+    return false;
+  }
+  let changed = false;
+  const importedCodes = new Set();
+  for (const row of rows.slice(1)) {
+    const name = safe(row[0], 100);
+    if (!name) continue;
+    const colleges = [...new Set(String(row[1] || '').split(/[、,，/；;]/).map((item) => safe(item, 80)).filter(Boolean))].slice(0, 200);
+    const digest = crypto.createHash('sha1').update(name).digest('hex').slice(0, 8).toUpperCase();
+    const code = `GX-${digest}`;
+    importedCodes.add(code);
+    let school = db.schools.find((item) => item.code === code);
+    if (!school) {
+      school = { code, name, status: 'active', source: 'workbook', servicePhone: '10086', verificationMode: 'none', colleges, scans: 0, updatedAt: new Date().toISOString() };
+      db.schools.push(school);
+      changed = true;
+    } else if (school.name !== name || JSON.stringify(school.colleges || []) !== JSON.stringify(colleges) || school.status !== 'active') {
+      school.name = name; school.colleges = colleges; school.status = 'active'; school.source = 'workbook'; school.updatedAt = new Date().toISOString(); changed = true;
+    }
+  }
+  for (const school of db.schools) if (school.source === 'workbook' && !importedCodes.has(school.code) && school.status === 'active') { school.status = 'disabled'; school.updatedAt = new Date().toISOString(); changed = true; }
+  return changed;
+}
+
 function readDb() {
   ensureDb();
-  return normalizeDb(JSON.parse(fs.readFileSync(DB_FILE, 'utf8')));
+  if (runtimeDb) return runtimeDb;
+  const db = normalizeDb(JSON.parse(fs.readFileSync(DB_FILE, 'utf8')));
+  if (syncSchoolsFromWorkbook(db)) writeDb(db);
+  return db;
 }
 
 function writeDb(db) {
+  if (sqlStorage) { runtimeDb = db; sqlStorage.save(db).catch((error) => console.error('数据库保存失败:', error.message)); return; }
   const tempFile = `${DB_FILE}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tempFile, JSON.stringify(db, null, 2), 'utf8');
   fs.renameSync(tempFile, DB_FILE);
@@ -164,6 +221,27 @@ function safe(value, max = 200) {
 
 function validPhone(value) {
   return /^1\d{10}$/.test(value);
+}
+
+function validIdCard(value) {
+  return /^(\d{17}[\dXx])$/.test(value);
+}
+
+function maskPhoneNumber(value) {
+  const normalized = String(value || '').replace(/\s|-/g, '');
+  if (/^1\d{10}$/.test(normalized)) return `${normalized.slice(0, 3)}****${normalized.slice(-4)}`;
+  return normalized;
+}
+
+function saveIdImage(value, recordId, side) {
+  const match = /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/.exec(String(value || ''));
+  if (!match) throw new Error('身份证图片仅支持 JPG 或 PNG 格式');
+  const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer.length || buffer.length > 2 * 1024 * 1024) throw new Error('单张身份证图片不能超过 2MB');
+  const extension = match[1] === 'image/png' ? 'png' : 'jpg';
+  const filename = `${recordId}-${side}.${extension}`;
+  fs.writeFileSync(path.join(UPLOAD_DIR, filename), buffer);
+  return filename;
 }
 
 function validCode(value) {
@@ -298,7 +376,16 @@ function safeIso(value) {
 function availableOffers(db, schoolCode) {
   return db.numberOffers
     .filter((offer) => offer.schoolCode === schoolCode && offer.status === 'available')
-    .map(({ id, displayNumber, planName, monthlyFee }) => ({ id, displayNumber, planName, monthlyFee }));
+    .map(({ id, operator, displayNumber, planName, monthlyFee }) => ({ id, operator: operator || '未指定运营商', displayNumber, planName, monthlyFee }));
+}
+
+function pagedOffers(db, schoolCode, operator, query, page, pageSize) {
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+  const all = db.numberOffers.filter((offer) => offer.schoolCode === schoolCode && offer.status === 'available'
+    && (!operator || offer.operator === operator)
+    && (!normalizedQuery || `${offer.displayNumber} ${offer.planName}`.toLowerCase().includes(normalizedQuery)));
+  const start = (page - 1) * pageSize;
+  return { offers: all.slice(start, start + pageSize).map(({ id, operator: offerOperator, displayNumber, planName, monthlyFee }) => ({ id, operator: offerOperator || '未指定运营商', displayNumber, planName, monthlyFee })), total: all.length, page, pageSize, totalPages: Math.ceil(all.length / pageSize) };
 }
 
 function publicSchool(school) {
@@ -307,7 +394,8 @@ function publicSchool(school) {
     name: school.name,
     status: school.status,
     servicePhone: school.servicePhone,
-    verificationMode: school.verificationMode
+    verificationMode: school.verificationMode,
+    colleges: school.colleges || []
   };
 }
 
@@ -394,10 +482,10 @@ function csvEscape(value) {
 }
 
 function csv(records) {
-  const header = ['服务编号', '学校', '姓名', '学号', '手机号', '服务事项', '意向号码', '交付方式', '服务地址', '预约时间', '需求说明', '服务状态', '核验状态', '交付进度', '实名激活', '补贴状态', '补贴金额', '营销授权', '内部备注', '创建时间'];
+  const header = ['服务编号', '学校', '姓名', '学号', '身份证号码', '学院', '手机号', '服务事项', '运营商', '意向号码', '交付方式', '服务地址', '预约时间', '需求说明', '服务状态', '交付进度', '实名激活', '补贴状态', '补贴金额', '营销授权', '内部备注', '创建时间'];
   const rows = records.map((record) => [
-    record.id, record.schoolName, record.name, record.studentNo, record.phone, record.type,
-    record.selectedNumber, record.fulfillmentMethod, record.address, record.appointment, record.detail, record.status, record.verificationStatus,
+    record.id, record.schoolName, record.name, record.studentNo, record.idCard, record.college, record.phone, record.type,
+    record.operator, record.selectedNumber, record.fulfillmentMethod, record.address, record.appointment, record.detail, record.status,
     record.deliveryStatus, record.activationStatus, record.subsidyStatus, record.subsidyAmount,
     record.marketingConsent ? '是' : '否', record.internalNote, record.createdAt
   ]);
@@ -487,12 +575,22 @@ async function api(req, res, url) {
     catch { return json(res, 503, { error: '微信小程序服务暂时不可用，请使用网页端办理' }); }
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/schools') {
+    const query = safe(url.searchParams.get('q'), 60).toLowerCase();
+    const schools = db.schools.filter((item) => item.status === 'active' && (!query || item.name.toLowerCase().includes(query) || item.code.toLowerCase().includes(query))).slice(0, 20).map(publicSchool);
+    return json(res, 200, { schools });
+  }
+
   if (req.method === 'GET' && url.pathname.startsWith('/api/schools/') && url.pathname.endsWith('/numbers')) {
     const parts = url.pathname.split('/').filter(Boolean);
     const code = decodeURIComponent(parts[2] || '');
     const school = db.schools.find((item) => item.code === code && item.status === 'active');
     if (!school) return json(res, 404, { error: '学校二维码无效或已停用' });
-    return json(res, 200, { offers: availableOffers(db, school.code) });
+    const operator = safe(url.searchParams.get('operator'), 20);
+    const query = safe(url.searchParams.get('q'), 60);
+    const page = Math.max(1, Number.parseInt(url.searchParams.get('page'), 10) || 1);
+    const pageSize = Math.min(100, Math.max(10, Number.parseInt(url.searchParams.get('pageSize'), 10) || 30));
+    return json(res, 200, pagedOffers(db, school.code, operator, query, page, pageSize));
   }
 
   if (req.method === 'GET' && url.pathname.startsWith('/api/schools/')) {
@@ -520,13 +618,12 @@ async function api(req, res, url) {
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
     const schoolCode = safe(body.schoolCode, 40);
     const phone = safe(body.phone, 20);
-    const code = safe(body.code, 6);
-    const codeError = consumeStudentCode(schoolCode, phone, code, 'query');
-    if (codeError) return json(res, codeError.includes('次数过多') ? 429 : 400, { error: codeError });
+    if (!db.schools.some((item) => item.code === schoolCode && item.status === 'active')) return json(res, 404, { error: '学校入口无效或已停用' });
+    if (!validPhone(phone)) return json(res, 400, { error: '请输入正确的 11 位手机号码' });
     const records = [...db.orders, ...db.tickets]
       .filter((record) => record.schoolCode === schoolCode && record.phone === phone)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .map(({ id, type, status, createdAt, appointment, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating }) => ({ id, type, status, createdAt, appointment, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating }));
+      .map(({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating }) => ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating }));
     return json(res, 200, { records });
   }
 
@@ -542,13 +639,17 @@ async function api(req, res, url) {
       schoolName: school.name,
       name: safe(body.name, 40),
       studentNo: safe(body.studentNo, 60),
+      idCard: safe(body.idCard, 18).toUpperCase(),
+      college: safe(body.college, 80),
       phone: safe(body.phone, 20),
+      backupPhone: safe(body.backupPhone, 20),
       address: safe(body.address, 160),
       appointment: safe(body.appointment, 60) || '尽快联系',
       detail: safe(body.detail, 500),
       type: safe(body.type, 60),
       channel: safe(body.channel, 40) || 'school_qr',
       selectedNumber: safe(body.selectedNumber, 30),
+      operator: safe(body.operator, 20),
       selectedOfferId: safe(body.selectedOfferId, 80),
       fulfillmentMethod: safe(body.fulfillmentMethod, 30),
       serviceConsent: body.serviceConsent === true || body.serviceConsent === 'on',
@@ -573,17 +674,23 @@ async function api(req, res, url) {
       ratingComment: ''
     };
     if (!record.name) return json(res, 400, { error: '请输入姓名' });
-    if (!record.studentNo) return json(res, 400, { error: '请输入学号' });
+    if (!validIdCard(record.idCard)) return json(res, 400, { error: '请输入正确的 18 位身份证号码' });
+    if (!record.college) return json(res, 400, { error: '请输入所属学院' });
     if (!validPhone(record.phone)) return json(res, 400, { error: '请输入正确的 11 位手机号码' });
-    if (!record.address) return json(res, 400, { error: '请输入宿舍或服务地址' });
+    if (record.backupPhone && !validPhone(record.backupPhone)) return json(res, 400, { error: '备用联系电话应为正确的 11 位手机号码' });
     if (!record.detail) return json(res, 400, { error: '请填写需求说明' });
     if (!record.type) return json(res, 400, { error: '请选择服务项目' });
-    if (!record.serviceConsent) return json(res, 400, { error: '请先同意办理、资格核验和服务履约所必需的信息处理说明' });
+    if (!record.serviceConsent) return json(res, 400, { error: '请先同意信息收集和后续联系说明' });
+    try {
+      record.idCardFrontFile = saveIdImage(body.idCardFrontImage, record.id, 'front');
+      record.idCardBackFile = saveIdImage(body.idCardBackImage, record.id, 'back');
+    } catch (error) { return json(res, 400, { error: error.message }); }
     if (url.pathname === '/api/orders' && record.type.includes('选号')) {
-      if (!['快递配送', '上门激活', '迎新点办理'].includes(record.fulfillmentMethod)) return json(res, 400, { error: '请选择号码交付方式' });
       const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId && item.schoolCode === schoolCode && item.status === 'available');
       if (!offer) return json(res, 409, { error: '所选号码已被预占，请返回重新选择' });
       record.selectedNumber = offer.displayNumber;
+      record.operator = offer.operator;
+      record.fulfillmentMethod = '';
       record.deliveryStatus = 'pending';
       record.activationStatus = 'pending';
       record.subsidyStatus = 'pending';
@@ -591,23 +698,13 @@ async function api(req, res, url) {
       record.selectedNumber = '';
       record.fulfillmentMethod = '';
     }
-    const codeError = consumeStudentCode(schoolCode, record.phone, safe(body.code, 6), 'submit');
-    if (codeError) return json(res, codeError.includes('次数过多') ? 429 : 400, { error: codeError });
     if (record.selectedOfferId) {
       const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId);
       offer.status = 'reserved';
       offer.reservedBy = record.id;
     }
     record.statusHistory.push({ status: record.status, at: record.createdAt, by: 'student' });
-    const verification = await verifyStudent(school, record);
-    record.verificationStatus = verification.status;
-    if (record.verificationStatus === 'rejected') {
-      if (record.selectedOfferId) {
-        const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId && item.reservedBy === record.id);
-        if (offer) { offer.status = 'available'; offer.reservedBy = ''; }
-      }
-      return json(res, 403, { error: verification.error || '学生资格核验不通过，无法提交服务申请' });
-    }
+    record.verificationStatus = 'not_required';
     const collection = url.pathname === '/api/orders' ? db.orders : db.tickets;
     collection.push(record);
     audit(db, 'student.submitted', 'student', record.id, { schoolCode, type: record.type });
@@ -644,19 +741,55 @@ async function api(req, res, url) {
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
     const schoolCode = safe(body.schoolCode, 40);
-    const displayNumber = safe(body.displayNumber, 20);
+    const operator = safe(body.operator, 20);
+    const displayNumber = maskPhoneNumber(safe(body.displayNumber, 20));
     const planName = safe(body.planName, 80);
     const monthlyFee = Number(body.monthlyFee);
     if (!db.schools.some((item) => item.code === schoolCode)) return json(res, 400, { error: '学校不存在' });
+    if (!ALLOWED_OPERATORS.has(operator)) return json(res, 400, { error: '请选择中国移动、中国联通或中国电信' });
     if (!/^1\d{2}\*{4}\d{4}$/.test(displayNumber)) return json(res, 400, { error: '脱敏号码格式不正确，例如 138****0001' });
     if (!planName) return json(res, 400, { error: '请输入套餐名称' });
     if (!Number.isFinite(monthlyFee) || monthlyFee < 0 || monthlyFee > 9999) return json(res, 400, { error: '月费应为 0 至 9999 的数字' });
     if (db.numberOffers.some((item) => item.schoolCode === schoolCode && item.displayNumber === displayNumber)) return json(res, 409, { error: '该学校已存在相同号码资源' });
-    const offer = { id: id('NUM'), schoolCode, displayNumber, planName, monthlyFee, status: 'available', reservedBy: '' };
+    const offer = { id: id('NUM'), schoolCode, operator, displayNumber, planName, monthlyFee, status: 'available', reservedBy: '' };
     db.numberOffers.push(offer);
     audit(db, 'number-offer.created', sessionFor(req).user, offer.id, { schoolCode, displayNumber });
     writeDb(db);
     return json(res, 201, { offer });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/admin/number-offers/import') {
+    const session = requireAdmin(req, res);
+    if (!session) return;
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const schoolCode = safe(body.schoolCode, 40);
+    if (!db.schools.some((item) => item.code === schoolCode)) return json(res, 400, { error: '学校不存在' });
+    if (!body.fileBase64) return json(res, 400, { error: '请上传 Excel 文件' });
+    let rows;
+    try {
+      const workbook = XLSX.read(Buffer.from(String(body.fileBase64).replace(/^data:.*?;base64,/, ''), 'base64'), { type: 'buffer' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    } catch { return json(res, 400, { error: 'Excel 文件无法解析，请检查文件格式' }); }
+    if (!rows.length) return json(res, 400, { error: 'Excel 中没有可导入的数据' });
+    const aliases = (row, names) => names.map((name) => row[name]).find((value) => value !== undefined && String(value).trim() !== '') ?? '';
+    const imported = [];
+    for (const row of rows) {
+      const operator = safe(aliases(row, ['运营商', 'operator', 'Operator']), 20);
+      const displayNumber = maskPhoneNumber(safe(aliases(row, ['可选号码', '脱敏号码', 'displayNumber', 'number']), 20));
+      const planName = safe(aliases(row, ['套餐名称', 'planName', 'plan']), 80);
+      const monthlyFee = Number(aliases(row, ['月费', 'monthlyFee', 'fee']) || 0);
+      if (!ALLOWED_OPERATORS.has(operator) || !/^1\d{2}\*{4}\d{4}$/.test(displayNumber) || !planName || !Number.isFinite(monthlyFee) || monthlyFee < 0 || monthlyFee > 9999) continue;
+      if (db.numberOffers.some((item) => item.schoolCode === schoolCode && item.displayNumber === displayNumber)) continue;
+      const offer = { id: id('NUM'), schoolCode, operator, displayNumber, planName, monthlyFee, status: 'available', reservedBy: '' };
+      db.numberOffers.push(offer);
+      imported.push(offer);
+    }
+    if (!imported.length) return json(res, 400, { error: '没有符合格式的数据。请使用：运营商、可选号码、套餐名称、月费' });
+    audit(db, 'number-offer.imported', session.user, schoolCode, { count: imported.length });
+    writeDb(db);
+    return json(res, 201, { imported: imported.length, skipped: rows.length - imported.length });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/student/confirm-completion') {
@@ -664,8 +797,6 @@ async function api(req, res, url) {
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
     const schoolCode = safe(body.schoolCode, 40);
     const phone = safe(body.phone, 20);
-    const codeError = consumeStudentCode(schoolCode, phone, safe(body.code, 6), 'confirm');
-    if (codeError) return json(res, codeError.includes('次数过多') ? 429 : 400, { error: codeError });
     const recordId = safe(body.recordId, 80);
     const record = [...db.orders, ...db.tickets].find((item) => item.id === recordId && item.schoolCode === schoolCode && item.phone === phone);
     if (!record) return json(res, 404, { error: '未找到对应服务记录' });
@@ -689,12 +820,13 @@ async function api(req, res, url) {
     const code = safe(body.code, 40).toUpperCase();
     const name = safe(body.name, 60);
     const servicePhone = safe(body.servicePhone, 20);
-    const verificationMode = ['manual', 'api', 'none'].includes(body.verificationMode) ? body.verificationMode : 'manual';
+    const verificationMode = 'none';
     if (!name) return json(res, 400, { error: '请输入学校名称' });
     if (!validCode(code)) return json(res, 400, { error: '学校代码需为 3 至 40 位字母、数字或短横线' });
     if (!servicePhone) return json(res, 400, { error: '请输入服务电话' });
     if (db.schools.some((school) => school.code === code)) return json(res, 409, { error: '该学校代码已存在' });
-    const school = { code, name, status: 'active', servicePhone, verificationMode, scans: 0, updatedAt: new Date().toISOString() };
+    const colleges = Array.isArray(body.colleges) ? body.colleges.map((item) => safe(item, 80)).filter(Boolean).slice(0, 200) : [];
+    const school = { code, name, status: 'active', servicePhone, verificationMode, colleges, scans: 0, updatedAt: new Date().toISOString() };
     db.schools.push(school);
     audit(db, 'school.created', sessionFor(req).user, school.code, { name: school.name });
     writeDb(db);
@@ -743,6 +875,18 @@ async function api(req, res, url) {
       'X-Content-Type-Options': 'nosniff'
     });
     return res.end(csv(records));
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/admin/export.xlsx') {
+    if (!requireAdmin(req, res)) return;
+    const type = url.searchParams.get('type');
+    const records = type === 'order' ? db.orders : type === 'ticket' ? db.tickets : [...db.orders, ...db.tickets];
+    const rows = records.map((record) => ({ 服务编号: record.id, 学校: record.schoolName, 姓名: record.name, 学号: record.studentNo, 身份证号码: record.idCard, 学院: record.college, 联系电话: record.phone, 备用联系电话: record.backupPhone, 运营商: record.operator, 意向号码: record.selectedNumber, 服务事项: record.type, 状态: record.status, 创建时间: record.createdAt }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), '信息收集');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="campus-service-records.xlsx"', 'Cache-Control': 'no-store' });
+    return res.end(buffer);
   }
 
   if (req.method === 'PATCH' && url.pathname.startsWith('/api/admin/records/')) {
@@ -850,4 +994,12 @@ if (IS_PRODUCTION && ADMIN_PASSWORD === 'campus-admin-2026') {
 }
 
 ensureDb();
-server.listen(PORT, () => console.log(`Campus service running at http://127.0.0.1:${PORT}`));
+async function start() {
+  if (DB_DRIVER !== 'json') {
+    sqlStorage = new Storage({ driver: DB_DRIVER, file: DB_FILE, initial: initialDb, normalize: normalizeDb });
+    runtimeDb = await sqlStorage.init();
+    if (syncSchoolsFromWorkbook(runtimeDb)) await sqlStorage.save(runtimeDb);
+  }
+  server.listen(PORT, () => console.log(`Campus service running at http://127.0.0.1:${PORT} using ${DB_DRIVER}`));
+}
+start().catch((error) => { console.error('数据库初始化失败:', error); process.exitCode = 1; });

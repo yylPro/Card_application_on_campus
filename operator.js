@@ -124,7 +124,7 @@ function renderRecords() {
 
 function renderNumberOffers(offers) {
   const target = document.getElementById('numberOfferList');
-  target.innerHTML = offers.map((offer) => `<article class="number-offer"><div><strong>${escapeHtml(offer.displayNumber)}</strong><small>${escapeHtml(offer.planName)} · ${escapeHtml(offer.schoolCode)}</small></div><div><strong>${escapeHtml(String(offer.monthlyFee))} 元/月</strong><span class="status-chip ${offer.status === 'available' ? 'completed' : 'pending'}">${offer.status === 'available' ? '可选' : '已预占'}</span></div></article>`).join('') || '<p class="empty-state">暂无号码资源。</p>';
+  target.innerHTML = offers.map((offer) => `<article class="number-offer"><div><strong>${escapeHtml(offer.displayNumber)}</strong><small>${escapeHtml(offer.operator || '未指定运营商')} · ${escapeHtml(offer.planName)} · ${escapeHtml(offer.schoolCode)}</small></div><div><strong>${escapeHtml(String(offer.monthlyFee))} 元/月</strong><span class="status-chip ${offer.status === 'available' ? 'completed' : 'pending'}">${offer.status === 'available' ? '可选' : '已预占'}</span></div></article>`).join('') || '<p class="empty-state">暂无号码资源。</p>';
 }
 
 function renderOverview(data) {
@@ -210,7 +210,7 @@ document.getElementById('logoutButton').addEventListener('click', async () => {
   await api('/api/auth/logout', { method: 'POST' });
   location.replace('/admin/login');
 });
-document.getElementById('exportButton').addEventListener('click', () => { location.assign('/api/admin/export'); });
+document.getElementById('exportButton').addEventListener('click', () => { location.assign('/api/admin/export.xlsx'); });
 document.querySelectorAll('[data-filter]').forEach((button) => {
   button.addEventListener('click', () => {
     activeFilter = button.dataset.filter;
@@ -330,6 +330,23 @@ document.getElementById('numberOfferForm').addEventListener('submit', async (eve
   } finally {
     button.disabled = false;
   }
+});
+
+document.getElementById('importNumberOffersButton').addEventListener('click', async () => {
+  const file = document.getElementById('numberOfferFile').files[0];
+  const schoolCode = document.getElementById('numberOfferSchool').value;
+  if (!file) return showToast('请选择 Excel 或 CSV 文件', true);
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const result = await api('/api/admin/number-offers/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schoolCode, fileBase64: reader.result }) });
+      showToast(`已导入 ${result.imported} 条号码，跳过 ${result.skipped} 条`);
+      document.getElementById('numberOfferFile').value = '';
+      await loadOverview();
+    } catch (error) { showToast(error.message, true); }
+  };
+  reader.onerror = () => showToast('文件读取失败，请重试', true);
+  reader.readAsDataURL(file);
 });
 
 fetch('/api/auth/session')

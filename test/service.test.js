@@ -6,9 +6,11 @@ const http = require('node:http');
 const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
+const XLSX = require('xlsx');
 
 const ROOT = path.resolve(__dirname, '..');
 const TEST_PHONES = ['13800000001', '13800000002', '13800000003'];
+const TEST_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLrJAAAAABJRU5ErkJggg==';
 const smsMessages = [];
 let baseUrl;
 let child;
@@ -89,6 +91,10 @@ async function createOrder(phone, overrides = {}) {
       schoolCode,
       name: '内测学生',
       studentNo: `TEST-${phone.slice(-4)}`,
+      idCard: `110101199001${phone.slice(-6)}`,
+      college: '信息工程学院',
+      idCardFrontImage: TEST_IMAGE,
+      idCardBackImage: TEST_IMAGE,
       phone,
       code,
       address: '内测宿舍 1 栋 101',
@@ -180,28 +186,32 @@ test('运营后台可创建学校、生成动态二维码并返回 PNG', async (
   const audit = await request('/api/admin/audit-logs?limit=20', { cookie });
   assert.equal(audit.response.status, 200);
   assert.ok(audit.body.logs.some((item) => item.action === 'school.created' && item.target === 'API-2026'));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ 运营商: '中国联通', 可选号码: '186****0001', 套餐名称: '联通校园套餐', 月费: 29 }]), '号码');
+  const imported = await request('/api/admin/number-offers/import', { method: 'POST', cookie, body: { schoolCode: 'API-2026', fileBase64: Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })).toString('base64') } });
+  assert.equal(imported.response.status, 201);
+  assert.equal(imported.body.imported, 1);
 });
 
-test('短信网关、必要同意和普通预约按统一 API 执行', async () => {
+test('学生信息收集要求身份证、学院与必要同意', async () => {
   const code = await testCode(TEST_PHONES[0], 'submit');
   const noConsent = await request('/api/orders', { method: 'POST', body: { schoolCode: 'XXU-2026', name: '内测学生', studentNo: 'TEST-NO-CONSENT', phone: TEST_PHONES[0], code, address: '内测地址', detail: '未同意必要信息处理', type: '校园网账号预约' } });
   assert.equal(noConsent.response.status, 400);
-  const created = await request('/api/orders', { method: 'POST', body: { schoolCode: 'XXU-2026', name: '内测学生', studentNo: 'TEST-0001', phone: TEST_PHONES[0], code, address: '内测地址', detail: '正常预约', type: '校园网账号预约', serviceConsent: true, marketingConsent: false } });
+  const created = await request('/api/orders', { method: 'POST', body: { schoolCode: 'XXU-2026', name: '内测学生', studentNo: 'TEST-0001', idCard: '110101199001010001', college: '信息工程学院', idCardFrontImage: TEST_IMAGE, idCardBackImage: TEST_IMAGE, phone: TEST_PHONES[0], code, address: '内测地址', detail: '正常预约', type: '校园网账号预约', serviceConsent: true, marketingConsent: false } });
   assert.equal(created.response.status, 201);
-  assert.equal(created.body.record.verificationStatus, 'pending_manual');
+  assert.equal(created.body.record.verificationStatus, 'not_required');
 });
 
-test('学校接口核验通过后创建订单，不通过时拒绝创建', async () => {
+test('学校接口核验关闭后，订单统一标记为无需核验', async () => {
   const verified = await createOrder(TEST_PHONES[1], { schoolCode: 'API-2026', name: '内测学生' });
   assert.equal(verified.response.status, 201);
-  assert.equal(verified.body.record.verificationStatus, 'verified');
+  assert.equal(verified.body.record.verificationStatus, 'not_required');
   const rejectedCode = await testCode(TEST_PHONES[2], 'submit', 'API-2026');
   const rejected = await request('/api/orders', { method: 'POST', body: { schoolCode: 'API-2026', name: '拒绝学生', studentNo: 'TEST-REJECTED', phone: TEST_PHONES[2], code: rejectedCode, address: '内测地址', detail: '接口拒绝测试', type: '校园网账号预约', serviceConsent: true } });
-  assert.equal(rejected.response.status, 403);
+  assert.equal(rejected.response.status, 400);
   const missingCode = await testCode(TEST_PHONES[0], 'submit', 'API-2026');
   const missing = await request('/api/orders', { method: 'POST', body: { schoolCode: 'API-2026', name: '内测学生', studentNo: 'TEST-MISSING', phone: TEST_PHONES[0], code: missingCode, address: '内测地址', detail: '学生信息不存在测试', type: '校园网账号预约', serviceConsent: true } });
-  assert.equal(missing.response.status, 403);
-  assert.equal(missing.body.error, '未查询到学生信息，请核对姓名和学号后重新提交');
+  assert.equal(missing.response.status, 400);
 });
 
 test('选号订单预占号码，取消后自动释放', async () => {
@@ -225,7 +235,7 @@ test('并发提交同一号码时只允许一个订单预占成功', async () =>
   const secondCode = await testCode(secondPhone, 'submit');
   const order = (phone, code, studentNo) => request('/api/orders', {
     method: 'POST',
-    body: { schoolCode: 'XXU-2026', name: '并发测试学生', studentNo, phone, code, address: '内测宿舍', detail: '并发预占测试', type: '新生选号预约', selectedOfferId, fulfillmentMethod: '迎新点办理', serviceConsent: true }
+    body: { schoolCode: 'XXU-2026', name: '并发测试学生', studentNo, idCard: `110101199001${phone.slice(-6)}`, college: '信息工程学院', idCardFrontImage: TEST_IMAGE, idCardBackImage: TEST_IMAGE, phone, code, address: '内测宿舍', detail: '并发预占测试', type: '新生选号预约', selectedOfferId, fulfillmentMethod: '迎新点办理', serviceConsent: true }
   });
   const results = await Promise.all([
     order(firstPhone, firstCode, 'CONCURRENT-01'),

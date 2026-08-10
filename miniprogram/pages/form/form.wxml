@@ -1,14 +1,14 @@
-<view class="page"><view class="card"><view class="eyebrow">{{title}}</view><text class="muted">提交前需验证手机号码。办理与营销授权彼此独立。</text>
+<view class="page"><view class="card"><view class="eyebrow">{{title}}</view><text class="muted">请填写真实信息，工作人员会根据提交内容联系您。</text>
   <view class="field">姓名<input class="input" data-key="name" bindinput="setField" placeholder="请输入姓名" /></view>
-  <view class="field">学号<input class="input" data-key="studentNo" bindinput="setField" placeholder="用于资格核验" /></view>
-  <view class="field">手机号码<input class="input" data-key="phone" type="number" maxlength="11" bindinput="setField" placeholder="用于接收通知" /></view>
-  <view class="field">短信验证码<view class="row"><input class="input" data-key="code" type="number" maxlength="6" bindinput="setField" placeholder="6 位验证码" /><button class="code-button" size="mini" bindtap="sendCode" disabled="{{countdown > 0}}">{{countdown > 0 ? countdown + ' 秒后重试' : '获取验证码'}}</button></view></view>
-  <view wx:if="{{isNumberOrder}}" class="field">意向号码<picker range="{{numbers}}" bindchange="pickNumber"><view class="picker">{{selectedNumber}}</view></picker></view>
-  <view wx:if="{{isNumberOrder}}" class="field">交付方式<picker range="{{methods}}" bindchange="pickMethod"><view class="picker">{{fulfillmentMethod}}</view></picker></view>
-  <view class="field">服务地址<input class="input" data-key="address" bindinput="setField" placeholder="例如：南苑 3 栋 412" /></view>
-  <view class="field">期望时间<picker range="{{appointments}}" bindchange="pickAppointment"><view class="picker">{{appointment}}</view></picker></view>
+  <view class="field">学号（可选）<input class="input" data-key="studentNo" bindinput="setField" placeholder="如有请填写" /></view>
+  <view class="field">身份证号码<input class="input" data-key="idCard" maxlength="18" bindinput="setField" placeholder="请输入身份证号码" /></view>
+  <view class="field">学院<input class="input" data-key="college" bindinput="setField" placeholder="请输入所属学院" /></view>
+  <view class="field">手机号码<input class="input" data-key="phone" type="number" maxlength="11" bindinput="setField" placeholder="请输入手机号码" /></view>
+  <view wx:if="{{isNumberOrder}}" class="field">运营商<picker range="{{operators}}" bindchange="pickOperator"><view class="picker">{{operator}}</view></picker></view>
+  <view wx:if="{{isNumberOrder}}" class="field">意向号码<picker range="{{numbers}}" bindchange="pickNumber"><view class="picker">{{selectedNumber}}</view></picker><view class="row"><button size="mini" bindtap="previousPage" disabled="{{page <= 1}}">上一页</button><text class="muted">第 {{page}} / {{totalPages}} 页</text><button size="mini" bindtap="nextPage" disabled="{{page >= totalPages}}">下一页</button></view></view>
+  <view class="field">希望时间<picker range="{{appointments}}" bindchange="pickAppointment"><view class="picker">{{appointment}}</view></picker></view>
   <view class="field">需求说明<textarea class="textarea" data-key="detail" bindinput="setField" placeholder="请描述具体需求" /></view>
-  <label class="consent"><checkbox checked="{{serviceConsent}}" bindchange="toggleService" />我同意将上述信息用于本次办理、资格核验和服务履约。</label>
+  <label class="consent"><checkbox checked="{{serviceConsent}}" bindchange="toggleService" />我同意将上述信息用于校园通信服务信息收集和后续联系。</label>
   <label class="consent"><checkbox checked="{{marketingConsent}}" bindchange="toggleMarketing" />我同意接收优惠信息（可不选）。</label>
   <button class="primary" bindtap="submit">提交{{kind === 'ticket' ? '工单' : '预约'}}</button>
 </view></view>

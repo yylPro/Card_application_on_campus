@@ -23,19 +23,68 @@ function userError(error, fallback = '操作未完成，请稍后重试') {
   return error?.message || fallback;
 }
 
+function imageDataUrl(file) {
+  return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('身份证图片读取失败')); reader.readAsDataURL(file); });
+}
+
 async function loadNumberOffers() {
-  const select = document.getElementById('numberOfferSelect');
-  select.replaceChildren(new Option('正在加载可选号码...', ''));
+  const tabs = document.getElementById('operatorTabs');
+  const list = document.getElementById('numberPickerList');
+  const selectedInput = document.getElementById('selectedOfferId');
+  list.innerHTML = '<p class="empty-state">正在加载可选号码...</p>';
   try {
     const response = await fetch(`/api/schools/${encodeURIComponent(schoolCode)}/numbers`);
     const payload = await readJson(response, '号码资源加载失败，请稍后重试');
     if (!response.ok) throw new Error(payload.error || '号码资源暂不可用');
-    select.replaceChildren(new Option(payload.offers.length ? '请选择意向号码' : '当前没有可选号码', ''));
-    payload.offers.forEach((offer) => select.add(new Option(`${offer.displayNumber} · ${offer.planName} · ${offer.monthlyFee} 元/月`, offer.id)));
+    const groups = payload.offers.reduce((result, offer) => { (result[offer.operator] ||= []).push(offer); return result; }, {});
+    const operators = Object.keys(groups);
+    let activeOperator = operators[0] || '';
+    const render = () => {
+      tabs.innerHTML = operators.map((operator) => `<button type="button" class="operator-tab ${operator === activeOperator ? 'active' : ''}" data-operator="${operator}">${operator}<small>${groups[operator].length} 个号码</small></button>`).join('');
+      const offers = groups[activeOperator] || [];
+      list.innerHTML = offers.length ? offers.map((offer) => `<button type="button" class="number-option ${selectedInput.value === offer.id ? 'selected' : ''}" data-offer-id="${offer.id}"><strong>${offer.displayNumber}</strong><span>${offer.planName} · ${offer.monthlyFee} 元/月</span></button>`).join('') : '<p class="empty-state">该运营商暂无可选号码</p>';
+    };
+    tabs.onclick = (event) => { const button = event.target.closest('[data-operator]'); if (button) { activeOperator = button.dataset.operator; render(); } };
+    list.onclick = (event) => { const button = event.target.closest('[data-offer-id]'); if (!button) return; selectedInput.value = button.dataset.offerId; list.querySelectorAll('.number-option').forEach((item) => item.classList.toggle('selected', item === button)); };
+    render();
+    if (!payload.offers.length) list.innerHTML = '<p class="empty-state">当前没有可选号码</p>';
   } catch (error) {
-    select.replaceChildren(new Option('号码加载失败，请稍后重试', ''));
+    tabs.replaceChildren();
+    list.innerHTML = '<p class="empty-state">号码加载失败，请稍后重试</p>';
     showToast(userError(error), true);
   }
+}
+
+async function loadNumberOffers() {
+  const tabs = document.getElementById('operatorTabs');
+  const search = document.getElementById('numberSearch');
+  const list = document.getElementById('numberPickerList');
+  const pagination = document.getElementById('numberPagination');
+  const selectedInput = document.getElementById('selectedOfferId');
+  const operators = ['中国移动', '中国联通', '中国电信'];
+  let operator = operators[0];
+  let page = 1;
+  let query = '';
+  let searchTimer;
+  const render = async () => {
+    list.innerHTML = '<p class="empty-state">正在加载可选号码...</p>';
+    const params = new URLSearchParams({ operator, page: String(page), pageSize: '30' });
+    if (query) params.set('q', query);
+    try {
+      const targetSchoolCode = selectedSchoolCode?.value || schoolCode;
+      const response = await fetch(`/api/schools/${encodeURIComponent(targetSchoolCode)}/numbers?${params}`);
+      const payload = await readJson(response, '号码资源加载失败，请稍后重试');
+      if (!response.ok) throw new Error(payload.error || '号码资源暂不可用');
+      tabs.innerHTML = operators.map((item) => `<button type="button" class="operator-tab ${item === operator ? 'active' : ''}" data-operator="${item}">${item}</button>`).join('');
+      list.innerHTML = payload.offers.length ? payload.offers.map((offer) => `<button type="button" class="number-option ${selectedInput.value === offer.id ? 'selected' : ''}" data-offer-id="${offer.id}"><strong>${offer.displayNumber}</strong><span>${offer.planName} · ${offer.monthlyFee} 元/月</span></button>`).join('') : '<p class="empty-state">未找到可选号码</p>';
+      pagination.innerHTML = payload.totalPages > 1 ? `<button type="button" class="outline-button" data-page="prev" ${page === 1 ? 'disabled' : ''}>上一页</button><span>第 ${page} / ${payload.totalPages} 页，共 ${payload.total} 个号码</span><button type="button" class="outline-button" data-page="next" ${page >= payload.totalPages ? 'disabled' : ''}>下一页</button>` : `<span>共 ${payload.total} 个号码</span>`;
+    } catch (error) { list.innerHTML = '<p class="empty-state">号码加载失败，请稍后重试</p>'; pagination.replaceChildren(); showToast(userError(error), true); }
+  };
+  tabs.onclick = (event) => { const button = event.target.closest('[data-operator]'); if (button) { operator = button.dataset.operator; page = 1; render(); } };
+  list.onclick = (event) => { const button = event.target.closest('[data-offer-id]'); if (!button) return; selectedInput.value = button.dataset.offerId; document.getElementById('selectedNumberSummary').textContent = button.querySelector('strong').textContent; list.querySelectorAll('.number-option').forEach((item) => item.classList.toggle('selected', item === button)); };
+  pagination.onclick = (event) => { const action = event.target.dataset.page; if (action === 'prev') { page -= 1; render(); } if (action === 'next') { page += 1; render(); } };
+  search.oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { query = search.value.trim(); page = 1; render(); }, 250); };
+  await render();
 }
 
 function showToast(message, isError = false) {
@@ -80,6 +129,9 @@ function startCodeCooldown(button) {
 
 function setService(title, kind) {
   selectedService = { title, kind };
+  document.getElementById('studentInfoStep').hidden = false;
+  document.getElementById('serviceOptionsStep').hidden = true;
+  document.getElementById('selectedNumberSummary').textContent = '尚未选择号码';
   const isNumberOrder = kind === 'order' && title.includes('选号');
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('modalIntro').textContent = kind === 'ticket'
@@ -122,7 +174,7 @@ function renderRecords(records) {
   }
   target.innerHTML = records.map((record) => `
     <article class="record-item">
-      <div><strong>${record.type}</strong><small>${record.id} · ${formatTime(record.createdAt)}</small></div>
+      <div><strong>${record.type}</strong><small>${record.id} · ${formatTime(record.createdAt)}${record.operator ? ` · ${record.operator} ${record.selectedNumber || ''}` : ''}</small></div>
       <span class="status-chip ${record.status}">${statusLabel(record.status)}</span>
       ${record.status === 'completed' && !record.completionConfirmedAt ? `<button class="text-button completion-open" data-completion-record="${record.id}">确认完成</button>` : ''}
       ${record.completionConfirmedAt ? `<small class="record-confirmed">已确认 · ${record.rating} 星</small>` : ''}
@@ -156,6 +208,12 @@ async function loadSchool() {
 document.querySelectorAll('[data-open]').forEach((button) => {
   button.addEventListener('click', () => setService(button.dataset.open, button.dataset.kind));
 });
+document.getElementById('openNumberPickerButton')?.addEventListener('click', () => openModal(document.getElementById('numberPickerModal')));
+document.getElementById('confirmNumberButton')?.addEventListener('click', () => {
+  if (!document.getElementById('selectedOfferId').value) return showToast('请先选择一个号码', true);
+  closeModals();
+  openModal(serviceModal);
+});
 document.getElementById('lookupButton').addEventListener('click', () => openModal(lookupModal));
 document.getElementById('lookupResults').addEventListener('click', (event) => {
   const button = event.target.closest('[data-completion-record]');
@@ -167,13 +225,41 @@ document.querySelectorAll('.modal-backdrop').forEach((modal) => {
 });
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeModals(); });
 
+const schoolSearch = document.getElementById('schoolSearch');
+const schoolResults = document.getElementById('schoolResults');
+const selectedSchoolCode = document.getElementById('selectedSchoolCode');
+const collegeSelect = document.getElementById('collegeSelect');
+const collegeCustom = document.getElementById('collegeCustom');
+let schoolSearchTimer;
+schoolSearch?.addEventListener('input', () => {
+  selectedSchoolCode.value = '';
+  clearTimeout(schoolSearchTimer);
+  schoolSearchTimer = setTimeout(async () => {
+    const query = schoolSearch.value.trim();
+    if (query.length < 2) { schoolResults.replaceChildren(); return; }
+    try { const response = await fetch(`/api/schools?q=${encodeURIComponent(query)}`); const result = await readJson(response, '学校查询失败'); schoolResults.innerHTML = result.schools.map((item) => `<button type="button" data-school-code="${item.code}">${item.name}</button>`).join('') || '<span>未匹配到学校</span>'; schoolResults._schools = result.schools; } catch { schoolResults.innerHTML = '<span>学校查询失败</span>'; }
+  }, 200);
+});
+schoolResults?.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-school-code]'); if (!button) return;
+  const item = schoolResults._schools.find((schoolItem) => schoolItem.code === button.dataset.schoolCode);
+  selectedSchoolCode.value = item.code; schoolSearch.value = item.name; schoolResults.replaceChildren();
+  const colleges = item.colleges || []; collegeSelect.innerHTML = colleges.map((college) => `<option value="${college}">${college}</option>`).join('') + '<option value="其他">其他学院</option>';
+  collegeCustom.hidden = colleges.length > 0; collegeCustom.required = false;
+  if (selectedService.title.includes('选号')) loadNumberOffers();
+});
+collegeSelect?.addEventListener('change', () => { collegeCustom.hidden = collegeSelect.value !== '其他'; collegeCustom.required = collegeSelect.value === '其他'; });
+
 serviceForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (!school) return showToast('学校信息尚未加载，请稍后重试', true);
   const submitButton = serviceForm.querySelector('[type="submit"]');
   const formData = new FormData(serviceForm);
   const payload = Object.fromEntries(formData.entries());
-  payload.schoolCode = schoolCode;
+  payload.schoolCode = document.getElementById('selectedSchoolCode').value || schoolCode;
+  payload.college = payload.college === '其他' ? String(payload.collegeCustom || '').trim() : payload.college;
+  payload.idCardFrontImage = await imageDataUrl(formData.get('idCardFront'));
+  payload.idCardBackImage = await imageDataUrl(formData.get('idCardBack'));
   payload.type = selectedService.title;
   payload.marketingConsent = formData.get('marketingConsent') === 'on';
 
@@ -199,6 +285,19 @@ serviceForm.addEventListener('submit', async (event) => {
   }
 });
 
+document.getElementById('nextServiceStepButton')?.addEventListener('click', () => {
+  const required = ['name', 'schoolSearch', 'selectedSchoolCode', 'idCard', 'college', 'phone', 'idCardFront', 'idCardBack'];
+  const missing = required.find((name) => { const field = serviceForm.elements[name]; return !field || (field.type === 'file' ? !field.files.length : !String(field.value || '').trim()); });
+  if (missing) return showToast('请先完成学生信息、学校、学院、身份证和联系电话填写', true);
+  if (serviceForm.elements.backupPhone.value && !/^1\d{10}$/.test(serviceForm.elements.backupPhone.value.trim())) return showToast('备用联系电话格式不正确', true);
+  document.getElementById('studentInfoStep').hidden = true;
+  document.getElementById('serviceOptionsStep').hidden = false;
+});
+document.getElementById('previousServiceStepButton')?.addEventListener('click', () => {
+  document.getElementById('studentInfoStep').hidden = false;
+  document.getElementById('serviceOptionsStep').hidden = true;
+});
+
 lookupForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const submitButton = lookupForm.querySelector('[type="submit"]');
@@ -209,7 +308,7 @@ lookupForm.addEventListener('submit', async (event) => {
     const response = await fetch('/api/student/records', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ schoolCode, phone: formData.get('phone'), code: formData.get('code') })
+    body: JSON.stringify({ schoolCode, phone: formData.get('phone') })
     });
     const result = await readJson(response, '查询失败，请稍后再试');
     if (!response.ok) throw new Error(result.error || '查询失败');
@@ -222,7 +321,7 @@ lookupForm.addEventListener('submit', async (event) => {
   }
 });
 
-document.getElementById('sendCodeButton').addEventListener('click', async () => {
+document.getElementById('sendCodeButton')?.addEventListener('click', async () => {
   const phone = lookupForm.elements.phone.value.trim();
   const button = document.getElementById('sendCodeButton');
   button.disabled = true;
@@ -235,7 +334,7 @@ document.getElementById('sendCodeButton').addEventListener('click', async () => 
   }
 });
 
-document.getElementById('sendSubmitCodeButton').addEventListener('click', async () => {
+document.getElementById('sendSubmitCodeButton')?.addEventListener('click', async () => {
   const phone = serviceForm.elements.phone.value.trim();
   const button = document.getElementById('sendSubmitCodeButton');
   button.disabled = true;
@@ -248,7 +347,7 @@ document.getElementById('sendSubmitCodeButton').addEventListener('click', async 
   }
 });
 
-document.getElementById('sendCompletionCodeButton').addEventListener('click', async () => {
+document.getElementById('sendCompletionCodeButton')?.addEventListener('click', async () => {
   const phone = lookupForm.elements.phone.value.trim();
   const button = document.getElementById('sendCompletionCodeButton');
   button.disabled = true;

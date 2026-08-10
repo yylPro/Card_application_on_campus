@@ -9,6 +9,9 @@
     "test": "node --test test/service.test.js"
   },
   "dependencies": {
-    "qrcode": "^1.5.4"
+    "mssql": "^12.7.0",
+    "mysql2": "^3.23.2",
+    "qrcode": "^1.5.4",
+    "xlsx": "^0.18.5"
   }
 }

@@ -109,24 +109,44 @@
         <h2 id="modalTitle">提交服务预约</h2>
         <p class="modal-intro" id="modalIntro">工作人员将在服务时间内与您确认。</p>
         <form id="serviceForm">
+          <div class="form-step" id="studentInfoStep">
           <div class="form-row">
             <label>姓名<input name="name" autocomplete="name" required placeholder="请输入姓名" /></label>
-            <label>学号<input name="studentNo" required placeholder="用于学校资格核验" /></label>
+            <label>学号（可选）<input name="studentNo" placeholder="如有请填写" /></label>
           </div>
-          <label>手机号码<input name="phone" inputmode="tel" autocomplete="tel" required placeholder="用于接收服务通知" /></label>
-          <label>短信验证码<div class="verification-row"><input name="code" inputmode="numeric" maxlength="6" required placeholder="验证本人手机号" /><button class="outline-button" type="button" id="sendSubmitCodeButton">获取验证码</button></div></label>
-          <label>宿舍/服务地址<input name="address" required placeholder="例如：南苑 3 栋 412 宿舍" /></label>
+          <label>学校<input name="schoolSearch" id="schoolSearch" autocomplete="off" required placeholder="输入学校名称的前几个字进行匹配" /><input type="hidden" name="selectedSchoolCode" id="selectedSchoolCode" /><div class="school-results" id="schoolResults"></div></label>
+          <div class="form-row">
+            <label>身份证号码<input name="idCard" inputmode="text" autocomplete="off" required placeholder="请输入身份证号码" /></label>
+            <label>学院<select name="college" id="collegeSelect" required><option value="其他">其他学院</option></select><input id="collegeCustom" name="collegeCustom" placeholder="请输入学院名称" hidden /></label>
+          </div>
+          <label>手机号码<input name="phone" inputmode="tel" autocomplete="tel" required placeholder="用于联系办理信息" /></label>
+          <label>备用联系电话（可选）<input name="backupPhone" inputmode="tel" placeholder="可填写家长或备用手机号" /></label>
+          <div class="form-row"><label>身份证人像面<input name="idCardFront" type="file" accept="image/jpeg,image/png" required /></label><label>身份证国徽面<input name="idCardBack" type="file" accept="image/jpeg,image/png" required /></label></div>
+          <button type="button" class="primary-button" id="nextServiceStepButton">下一步：选择服务</button>
+          </div>
+          <div class="form-step" id="serviceOptionsStep" hidden>
           <div class="number-selection" id="numberSelection" hidden>
-            <label>意向号码<select name="selectedOfferId" id="numberOfferSelect" required><option value="">正在加载可选号码...</option></select><small>号码提交后即时预占，最终以实名激活时运营商可售资源为准。</small></label>
-            <label>交付方式<select name="fulfillmentMethod"><option value="快递配送">快递配送到校</option><option value="上门激活">校园上门激活</option><option value="迎新点办理">迎新点现场办理</option></select></label>
+            <label>意向号码<input type="hidden" name="selectedOfferId" id="selectedOfferId" required /><div class="number-summary"><strong id="selectedNumberSummary">尚未选择号码</strong><button type="button" class="outline-button" id="openNumberPickerButton">进入选号</button></div><small>提交后号码会立即预占；取消订单后号码才会回到号码池。</small></label>
           </div>
           <label>希望服务时间<select name="appointment"><option value="尽快联系">尽快联系</option><option value="上午 09:00 - 12:00">上午 09:00 - 12:00</option><option value="下午 14:00 - 18:00">下午 14:00 - 18:00</option><option value="晚上 18:00 - 20:30">晚上 18:00 - 20:30</option></select></label>
           <label>需求说明<textarea name="detail" required placeholder="请描述具体需求，例如希望办理的套餐或故障情况"></textarea></label>
-          <label class="consent"><input name="serviceConsent" type="checkbox" required /><span>我已阅读并同意将以上信息用于本次服务预约、资格核验和服务履约。</span></label>
+          <label class="consent"><input name="serviceConsent" type="checkbox" required /><span>我已阅读并同意将以上信息用于校园通信服务信息收集和后续联系。</span></label>
           <label class="consent marketing"><input name="marketingConsent" type="checkbox" /><span>我同意接收校园通信服务优惠信息（可不选）。</span></label>
-          <button class="primary-button submit-button" type="submit">提交预约</button>
+          <div class="step-actions"><button type="button" class="outline-button" id="previousServiceStepButton">返回上一步</button><button class="primary-button submit-button" type="submit">提交预约</button></div>
+          </div>
         </form>
         <p class="fulfillment-note" id="fulfillmentNote" hidden>线上提交后由后台传递配送信息；工作人员按预约时间完成实名核验和激活。激活完成后，按运营规则登记服务补贴。</p>
+      </section>
+    </div>
+    <div class="modal-backdrop" id="numberPickerModal" hidden>
+      <section class="modal number-picker-modal" role="dialog" aria-modal="true" aria-labelledby="numberPickerTitle">
+        <button class="icon-close" type="button" data-close aria-label="关闭">×</button>
+        <p class="eyebrow">号码选择</p><h2 id="numberPickerTitle">选择运营商和号码</h2>
+        <div class="operator-tabs" id="operatorTabs" role="tablist"></div>
+        <input class="number-search" id="numberSearch" type="search" placeholder="搜索号码后四位或套餐名称" />
+        <div class="number-picker-list" id="numberPickerList" aria-live="polite"><p class="empty-state">正在加载可选号码...</p></div>
+        <div class="number-pagination" id="numberPagination"></div>
+        <button type="button" class="primary-button" id="confirmNumberButton">确认选择</button>
       </section>
     </div>
 
@@ -138,7 +158,7 @@
         <p class="modal-intro">为保护订单信息，请先验证提交预约时使用的手机号。</p>
         <form id="lookupForm">
           <label>手机号码<input name="phone" inputmode="tel" required placeholder="请输入提交预约时的手机号" /></label>
-          <label>短信验证码<div class="verification-row"><input name="code" inputmode="numeric" maxlength="6" required placeholder="6 位验证码" /><button class="outline-button" type="button" id="sendCodeButton">获取验证码</button></div></label>
+          <p class="modal-intro">请输入提交信息时填写的手机号，系统将查询该手机号对应的收集记录。</p>
           <button class="primary-button" type="submit">查询进度</button>
         </form>
         <div class="lookup-results" id="lookupResults" aria-live="polite"></div>
@@ -152,7 +172,6 @@
         <p class="modal-intro" id="completionRecordId"></p>
         <form id="completionForm">
           <input type="hidden" name="recordId" />
-          <label>短信验证码<div class="verification-row"><input name="code" inputmode="numeric" maxlength="6" required placeholder="验证本人手机号" /><button class="outline-button" type="button" id="sendCompletionCodeButton">获取验证码</button></div></label>
           <label>服务评价<select name="rating"><option value="5">5 星：非常满意</option><option value="4">4 星：满意</option><option value="3">3 星：一般</option><option value="2">2 星：不满意</option><option value="1">1 星：非常不满意</option></select></label>
           <label>补充说明（可选）<textarea name="ratingComment" placeholder="可填写服务体验或待改进的问题"></textarea></label>
           <button class="primary-button" type="submit">确认完成并提交评价</button>
