@@ -44,12 +44,24 @@ const WECHAT_MINIPROGRAM_HOME = process.env.WECHAT_MINIPROGRAM_HOME || 'pages/ho
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_RESEND_MS = 60 * 1000;
+const VOUCHER_DEFAULT_TTL_DAYS = 30;
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 const ALLOWED_OPERATORS = new Set(['中国移动', '中国联通', '中国电信']);
 const TEST_PHONE_NUMBERS = new Set((process.env.TEST_PHONE_NUMBERS || '13800000001,13800000002,13800000003,13900000001,13900000002')
   .split(',').map((phone) => phone.trim()).filter(validPhone));
 const TEST_SCHOOL_CODE = 'TEST-2026';
 const UNIFIED_ENTRY_CODE = 'UNIFIED-2026';
+const TEST_NUMBER_OFFERS = [
+  { id: 'TEST-CM-0001', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u79fb\u52a8', displayNumber: '138****0001', planName: '\u79fb\u52a8\u5185\u6d4b\u5957\u9910 A', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CM-0002', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u79fb\u52a8', displayNumber: '139****0002', planName: '\u79fb\u52a8\u5185\u6d4b\u5957\u9910 B', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CM-0003', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u79fb\u52a8', displayNumber: '158****0003', planName: '\u79fb\u52a8\u5185\u6d4b\u5957\u9910 C', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CU-0001', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u8054\u901a', displayNumber: '186****0001', planName: '\u8054\u901a\u5185\u6d4b\u5957\u9910 A', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CU-0002', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u8054\u901a', displayNumber: '185****0002', planName: '\u8054\u901a\u5185\u6d4b\u5957\u9910 B', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CU-0003', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u8054\u901a', displayNumber: '130****0003', planName: '\u8054\u901a\u5185\u6d4b\u5957\u9910 C', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CT-0001', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u7535\u4fe1', displayNumber: '189****0001', planName: '\u7535\u4fe1\u5185\u6d4b\u5957\u9910 A', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CT-0002', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u7535\u4fe1', displayNumber: '181****0002', planName: '\u7535\u4fe1\u5185\u6d4b\u5957\u9910 B', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CT-0003', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u7535\u4fe1', displayNumber: '133****0003', planName: '\u7535\u4fe1\u5185\u6d4b\u5957\u9910 C', monthlyFee: 0, status: 'available', reservedBy: '' }
+];
 const TEST_FIXTURES = [
   { flow: '选号与线下实名激活', name: '内测新生一', studentNo: 'TEST20260001', phone: '13800000001', service: '新生选号预约' },
   { flow: '校园网账号预约', name: '内测新生二', studentNo: 'TEST20260002', phone: '13800000002', service: '校园网账号预约' },
@@ -95,6 +107,7 @@ const initialDb = {
   }] : [])],
   orders: [],
   tickets: [],
+  vouchers: [],
   numberOffers: [
     { id: 'XXU-1382026', schoolCode: 'XXU-2026', displayNumber: '138****2026', planName: '校园畅享套餐', monthlyFee: 39, status: 'available', reservedBy: '' },
     { id: 'XXU-1391688', schoolCode: 'XXU-2026', displayNumber: '139****1688', planName: '校园畅享套餐', monthlyFee: 39, status: 'available', reservedBy: '' },
@@ -117,7 +130,15 @@ function normalizeDb(db) {
   db.schools = Array.isArray(db.schools) ? db.schools : [];
   db.orders = Array.isArray(db.orders) ? db.orders : [];
   db.tickets = Array.isArray(db.tickets) ? db.tickets : [];
+  db.vouchers = Array.isArray(db.vouchers) ? db.vouchers : [];
   db.numberOffers = Array.isArray(db.numberOffers) ? db.numberOffers : [];
+  if (!IS_PRODUCTION) {
+    const retiredTestOfferIds = new Set(['TEST-1380001', 'TEST-1380002', 'TEST-1380003']);
+    db.numberOffers = db.numberOffers.filter((item) => !retiredTestOfferIds.has(item.id));
+    for (const offer of TEST_NUMBER_OFFERS) {
+      if (!db.numberOffers.some((item) => item.id === offer.id)) db.numberOffers.push({ ...offer });
+    }
+  }
   db.numberOffers.forEach((offer) => { if (!ALLOWED_OPERATORS.has(offer.operator)) offer.operator = '中国移动'; });
   db.auditLogs = Array.isArray(db.auditLogs) ? db.auditLogs.slice(-5000) : [];
   db.schools.forEach((school) => {
@@ -153,6 +174,15 @@ function normalizeDb(db) {
     if (!Number.isInteger(record.rating) || record.rating < 1 || record.rating > 5) record.rating = 0;
     if (!record.ratingComment) record.ratingComment = '';
     if (!record.completionConfirmedAt) record.completionConfirmedAt = '';
+  });
+  db.vouchers = db.vouchers.filter((voucher) => voucher && voucher.id && voucher.recordId && voucher.token);
+  db.vouchers.forEach((voucher) => {
+    if (!['issued', 'redeemed', 'void'].includes(voucher.status)) voucher.status = 'issued';
+    if (!voucher.issuedAt) voucher.issuedAt = new Date().toISOString();
+    if (!voucher.expiresAt) voucher.expiresAt = new Date(Date.now() + VOUCHER_DEFAULT_TTL_DAYS * 86400000).toISOString();
+    if (!voucher.redeemedAt) voucher.redeemedAt = '';
+    if (!voucher.redeemedBy) voucher.redeemedBy = '';
+    if (!voucher.operatorReference) voucher.operatorReference = '';
   });
   return db;
 }
@@ -385,6 +415,32 @@ function consumeStudentCode(schoolCode, phone, code, purpose) {
   }
   queryCodes.delete(key);
   return null;
+}
+
+function findRecord(db, recordId) {
+  return [...db.orders, ...db.tickets].find((record) => record.id === recordId);
+}
+
+function voucherState(voucher) {
+  if (!voucher) return 'missing';
+  if (voucher.status === 'void') return 'void';
+  if (voucher.status === 'redeemed') return 'redeemed';
+  if (new Date(voucher.expiresAt).getTime() <= Date.now()) return 'expired';
+  return 'issued';
+}
+
+async function studentVoucher(voucher, record, url) {
+  if (!voucher || voucherState(voucher) !== 'issued') {
+    return voucher ? { id: voucher.id, status: voucherState(voucher), expiresAt: voucher.expiresAt, redeemedAt: voucher.redeemedAt || '' } : null;
+  }
+  const redeemUrl = `${url.origin}/redeem/${encodeURIComponent(voucher.token)}`;
+  return {
+    id: voucher.id,
+    status: 'issued',
+    expiresAt: voucher.expiresAt,
+    operator: voucher.operator || record.operator || '',
+    qrDataUrl: await QRCode.toDataURL(redeemUrl, { width: 520, margin: 2, errorCorrectionLevel: 'M' })
+  };
 }
 
 function safeIso(value) {
@@ -665,11 +721,17 @@ async function api(req, res, url) {
     const phone = safe(body.phone, 20);
     if (!db.schools.some((item) => item.code === schoolCode && item.status === 'active')) return json(res, 404, { error: '学校入口无效或已停用' });
     if (!validPhone(phone)) return json(res, 400, { error: '请输入正确的 11 位手机号码' });
+    const codeError = consumeStudentCode(schoolCode, phone, safe(body.code, 10), 'query');
+    if (codeError) return json(res, 400, { error: codeError });
     const records = [...db.orders, ...db.tickets]
       .filter((record) => record.schoolCode === schoolCode && record.phone === phone)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .map(({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating }) => ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating }));
-    return json(res, 200, { records });
+      .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating }) => {
+        const record = findRecord(db, id);
+        const voucher = db.vouchers.find((item) => item.recordId === id);
+        return { id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating, voucher: await studentVoucher(voucher, record, url) };
+      });
+    return json(res, 200, { records: await Promise.all(records) });
   }
 
   if (req.method === 'POST' && (url.pathname === '/api/orders' || url.pathname === '/api/tickets')) {

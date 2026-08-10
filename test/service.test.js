@@ -180,7 +180,7 @@ test('二维码、分流、H5 与小程序入口契约可用', async () => {
   assert.equal(fixtures.response.status, 200);
   assert.equal(fixtures.body.school.code, 'TEST-2026');
   assert.equal(fixtures.body.students.length, 3);
-  assert.equal(fixtures.body.availableOffers.length, 3);
+  assert.equal(fixtures.body.availableOffers.length, 9);
 });
 
 test('运营后台可创建学校、生成动态二维码并返回 PNG', async () => {
