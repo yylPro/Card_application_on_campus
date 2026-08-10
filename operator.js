@@ -80,7 +80,12 @@ function allRecords() {
 }
 
 function renderSchools(schools) {
-  document.getElementById('schoolList').innerHTML = schools.map((school) => {
+  const unifiedQrUrl = '/api/admin/qr/UNIFIED-2026';
+  const unifiedEntry = `${location.origin}/entry`;
+  document.getElementById('schoolList').innerHTML = `<article class="school-card unified-entry-card">
+    <img src="${unifiedQrUrl}" alt="统一服务入口二维码" />
+    <div class="school-card-main"><div><span class="status-chip completed">统一入口</span><h3>全校通用二维码</h3><p>${unifiedEntry}</p><p class="school-meta">扫码后选择学校和学院；微信内优先进入小程序，其他环境进入 H5。</p></div><div class="school-actions"><a class="outline-button" href="${unifiedQrUrl}" download="统一服务入口二维码.png">下载统一二维码</a><button class="text-button" data-copy="${unifiedEntry}">复制链接</button></div></div>
+  </article>` + schools.map((school) => {
     const qrUrl = `/api/admin/qr/${encodeURIComponent(school.code)}`;
     const entry = `${location.origin}/q/${encodeURIComponent(school.code)}`;
     const enabled = school.status === 'active';

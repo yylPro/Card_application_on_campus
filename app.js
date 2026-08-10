@@ -1,5 +1,6 @@
 const pathParts = location.pathname.split('/').filter(Boolean);
-const schoolCode = (pathParts[0] === 'q' || pathParts[0] === 'service') && pathParts[1] ? decodeURIComponent(pathParts[1]) : 'XXU-2026';
+const routeSchoolCode = (pathParts[0] === 'q' || pathParts[0] === 'service') && pathParts[1] ? decodeURIComponent(pathParts[1]) : '';
+let schoolCode = routeSchoolCode === 'UNIFIED-2026' ? '' : routeSchoolCode;
 const toast = document.getElementById('toast');
 const serviceModal = document.getElementById('serviceModal');
 const lookupModal = document.getElementById('lookupModal');
@@ -190,6 +191,12 @@ function openCompletion(recordId) {
 }
 
 async function loadSchool() {
+  if (!schoolCode) {
+    document.getElementById('schoolBadge').textContent = '统一服务入口';
+    document.getElementById('schoolEyebrow').textContent = '统一服务入口';
+    document.getElementById('modalSchool').textContent = '请选择学校后继续';
+    return;
+  }
   try {
     const response = await fetch(`/api/schools/${encodeURIComponent(schoolCode)}`);
     const payload = await readJson(response, '学校入口加载失败，请重新扫描二维码');
@@ -243,7 +250,8 @@ schoolSearch?.addEventListener('input', () => {
 schoolResults?.addEventListener('click', (event) => {
   const button = event.target.closest('[data-school-code]'); if (!button) return;
   const item = schoolResults._schools.find((schoolItem) => schoolItem.code === button.dataset.schoolCode);
-  selectedSchoolCode.value = item.code; schoolSearch.value = item.name; schoolResults.replaceChildren();
+  selectedSchoolCode.value = item.code; schoolCode = item.code; school = item; schoolSearch.value = item.name; schoolResults.replaceChildren();
+  document.getElementById('schoolBadge').textContent = `${item.name}服务入口`;
   const colleges = item.colleges || []; collegeSelect.innerHTML = colleges.map((college) => `<option value="${college}">${college}</option>`).join('') + '<option value="其他">其他学院</option>';
   collegeCustom.hidden = colleges.length > 0; collegeCustom.required = false;
   if (selectedService.title.includes('选号')) loadNumberOffers();
@@ -252,7 +260,7 @@ collegeSelect?.addEventListener('change', () => { collegeCustom.hidden = college
 
 serviceForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (!school) return showToast('学校信息尚未加载，请稍后重试', true);
+  if (!selectedSchoolCode.value) return showToast('请先搜索并选择学校', true);
   const submitButton = serviceForm.querySelector('[type="submit"]');
   const formData = new FormData(serviceForm);
   const payload = Object.fromEntries(formData.entries());

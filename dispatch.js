@@ -1,5 +1,5 @@
 const dispatchParts = location.pathname.split('/').filter(Boolean);
-const dispatchSchoolCode = dispatchParts[0] === 'q' ? decodeURIComponent(dispatchParts[1] || '') : '';
+const dispatchSchoolCode = dispatchParts[0] === 'q' ? decodeURIComponent(dispatchParts[1] || '') : 'UNIFIED-2026';
 const isWechat = /MicroMessenger/i.test(navigator.userAgent);
 const h5Entry = document.getElementById('h5Entry');
 const dispatchActions = document.getElementById('dispatchActions');
@@ -53,9 +53,10 @@ async function initDispatch() {
     const response = await fetch(`/api/dispatch/${encodeURIComponent(dispatchSchoolCode)}`);
     const entry = await response.json();
     if (!response.ok) throw new Error(entry.error || '学校二维码无效或已停用');
-    document.title = `${entry.school.name} · 校园通信服务`;
-    document.getElementById('dispatchEyebrow').textContent = `${entry.school.name}专属服务入口`;
-    document.getElementById('dispatchTitle').textContent = `${entry.school.name}校园通信服务`;
+    const entryName = entry.school?.name || '统一服务入口';
+    document.title = `${entryName} · 校园通信服务`;
+    document.getElementById('dispatchEyebrow').textContent = entry.school ? `${entryName}专属服务入口` : '统一服务入口';
+    document.getElementById('dispatchTitle').textContent = entry.school ? `${entryName}校园通信服务` : '扫码后选择学校办理';
     h5Entry.href = entry.h5Path;
     if (!isWechat) return openH5(entry, '当前环境不支持直接拉起小程序，网页端可独立办理全部服务。');
     if (!entry.miniProgram.enabled) return openH5(entry, '小程序服务尚未配置，网页端可独立办理全部服务。');

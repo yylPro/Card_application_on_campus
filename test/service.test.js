@@ -163,6 +163,13 @@ test('二维码、分流、H5 与小程序入口契约可用', async () => {
   const dispatch = await request('/api/dispatch/XXU-2026');
   assert.equal(dispatch.response.status, 200);
   assert.equal(dispatch.body.h5Path, '/service/XXU-2026');
+  const unifiedEntry = await request('/api/dispatch/UNIFIED-2026');
+  assert.equal(unifiedEntry.response.status, 200);
+  assert.equal(unifiedEntry.body.entryType, 'unified');
+  assert.equal(unifiedEntry.body.h5Path, '/service');
+  assert.equal(unifiedEntry.body.school, null);
+  const unifiedPage = await request('/entry');
+  assert.equal(unifiedPage.response.status, 200);
   const h5 = await request('/service/XXU-2026');
   assert.equal(h5.response.status, 200);
   assert.match(h5.body, /校园通信服务/);

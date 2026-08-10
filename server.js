@@ -9,6 +9,7 @@ const { Storage } = require('./backend/storage');
 const ROOT = __dirname;
 
 function loadLocalEnv() {
+  if (process.env.NODE_ENV === 'test') return;
   const file = path.join(ROOT, '.env');
   if (!fs.existsSync(file)) return;
   for (const rawLine of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
@@ -48,6 +49,7 @@ const ALLOWED_OPERATORS = new Set(['中国移动', '中国联通', '中国电信
 const TEST_PHONE_NUMBERS = new Set((process.env.TEST_PHONE_NUMBERS || '13800000001,13800000002,13800000003')
   .split(',').map((phone) => phone.trim()).filter(validPhone));
 const TEST_SCHOOL_CODE = 'TEST-2026';
+const UNIFIED_ENTRY_CODE = 'UNIFIED-2026';
 const TEST_FIXTURES = [
   { flow: '选号与线下实名激活', name: '内测新生一', studentNo: 'TEST20260001', phone: '13800000001', service: '新生选号预约' },
   { flow: '校园网账号预约', name: '内测新生二', studentNo: 'TEST20260002', phone: '13800000002', service: '校园网账号预约' },
@@ -429,6 +431,19 @@ function dispatchSchool(school) {
   };
 }
 
+function dispatchUnifiedEntry() {
+  return {
+    entryType: 'unified',
+    school: null,
+    miniProgram: {
+      enabled: Boolean(WECHAT_OFFICIAL_APP_ID && WECHAT_OFFICIAL_APP_SECRET && WECHAT_MINIPROGRAM_APP_ID),
+      appId: WECHAT_MINIPROGRAM_APP_ID || null,
+      path: WECHAT_MINIPROGRAM_HOME
+    },
+    h5Path: '/service'
+  };
+}
+
 async function getWechatJsapiTicket() {
   if (wechatTicketCache.value && wechatTicketCache.expiresAt > Date.now()) return wechatTicketCache.value;
   const tokenUrl = new URL('https://api.weixin.qq.com/cgi-bin/token');
@@ -569,6 +584,7 @@ async function api(req, res, url) {
 
   if (req.method === 'GET' && url.pathname.startsWith('/api/dispatch/')) {
     const code = decodeURIComponent(url.pathname.split('/').pop());
+    if (code === UNIFIED_ENTRY_CODE) return json(res, 200, dispatchUnifiedEntry());
     const school = db.schools.find((item) => item.code === code && item.status === 'active');
     if (!school) return json(res, 404, { error: '学校二维码无效或已停用' });
     school.scans += 1;
@@ -580,6 +596,16 @@ async function api(req, res, url) {
   if (req.method === 'POST' && url.pathname.startsWith('/api/dispatch/') && url.pathname.endsWith('/wechat-config')) {
     const parts = url.pathname.split('/').filter(Boolean);
     const code = decodeURIComponent(parts[2] || '');
+    if (code === UNIFIED_ENTRY_CODE) {
+      if (!WECHAT_OFFICIAL_APP_ID || !WECHAT_OFFICIAL_APP_SECRET || !WECHAT_MINIPROGRAM_APP_ID) return json(res, 503, { error: '小程序拉起尚未配置' });
+      let body;
+      try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+      const pageUrl = safe(body.pageUrl, 500);
+      try { if (new URL(pageUrl).origin !== url.origin) return json(res, 400, { error: '分流页地址无效' }); }
+      catch { return json(res, 400, { error: '分流页地址无效' }); }
+      try { return json(res, 200, { config: await wechatJsConfig(pageUrl) }); }
+      catch { return json(res, 503, { error: '微信服务暂时不可用，请使用网页端办理' }); }
+    }
     const school = db.schools.find((item) => item.code === code && item.status === 'active');
     if (!school) return json(res, 404, { error: '学校二维码无效或已停用' });
     if (!WECHAT_OFFICIAL_APP_ID || !WECHAT_OFFICIAL_APP_SECRET || !WECHAT_MINIPROGRAM_APP_ID) return json(res, 503, { error: '小程序拉起尚未配置' });
@@ -870,9 +896,9 @@ async function api(req, res, url) {
   if (req.method === 'GET' && url.pathname.startsWith('/api/admin/qr/')) {
     if (!requireAdmin(req, res)) return;
     const code = decodeURIComponent(url.pathname.split('/').pop());
-    const school = db.schools.find((item) => item.code === code);
-    if (!school) return json(res, 404, { error: '学校不存在' });
-    const png = await QRCode.toBuffer(`${url.origin}/q/${encodeURIComponent(code)}`, { width: 720, margin: 2, errorCorrectionLevel: 'M' });
+    if (code !== UNIFIED_ENTRY_CODE && !db.schools.some((item) => item.code === code)) return json(res, 404, { error: '学校不存在' });
+    const target = code === UNIFIED_ENTRY_CODE ? `${url.origin}/entry` : `${url.origin}/q/${encodeURIComponent(code)}`;
+    const png = await QRCode.toBuffer(target, { width: 720, margin: 2, errorCorrectionLevel: 'M' });
     res.writeHead(200, {
       'Content-Type': 'image/png',
       'Cache-Control': 'no-store',
@@ -899,9 +925,20 @@ async function api(req, res, url) {
     if (!requireAdmin(req, res)) return;
     const type = url.searchParams.get('type');
     const records = type === 'order' ? db.orders : type === 'ticket' ? db.tickets : [...db.orders, ...db.tickets];
-    const rows = records.map((record) => ({ 服务编号: record.id, 学校: record.schoolName, 姓名: record.name, 学号: record.studentNo, 身份证号码: record.idCard, 学院: record.college, 联系电话: record.phone, 备用联系电话: record.backupPhone, 运营商: record.operator, 意向号码: record.selectedNumber, 服务事项: record.type, 状态: record.status, 创建时间: record.createdAt }));
+    const sortedRecords = [...records].sort((a, b) => `${a.schoolName || ''}\u0000${a.college || ''}`.localeCompare(`${b.schoolName || ''}\u0000${b.college || ''}`, 'zh-CN'));
+    const rows = sortedRecords.map((record) => ({ 服务编号: record.id, 学校: record.schoolName, 学院: record.college, 姓名: record.name, 学号: record.studentNo, 身份证号码: record.idCard, 联系电话: record.phone, 备用联系电话: record.backupPhone, 运营商: record.operator, 意向号码: record.selectedNumber, 服务事项: record.type, 状态: record.status, 创建时间: record.createdAt }));
+    const grouped = new Map();
+    for (const record of sortedRecords) {
+      const key = `${record.schoolName || '未填写学校'}\u0000${record.college || '其他学院'}`;
+      const item = grouped.get(key) || { 学校: record.schoolName || '未填写学校', 学院: record.college || '其他学院', 提交数量: 0, 已完成: 0, 已取消: 0 };
+      item.提交数量 += 1;
+      if (record.status === 'completed') item.已完成 += 1;
+      if (record.status === 'cancelled') item.已取消 += 1;
+      grouped.set(key, item);
+    }
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), '信息收集');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([...grouped.values()]), '学校学院汇总');
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="campus-service-records.xlsx"', 'Cache-Control': 'no-store' });
     return res.end(buffer);
@@ -979,6 +1016,8 @@ const mimeTypes = {
 function staticFile(req, res, url) {
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === '/') pathname = '/index.html';
+  if (pathname === '/entry') pathname = '/dispatch.html';
+  if (pathname === '/service') pathname = '/index.html';
   if (pathname.startsWith('/q/')) pathname = '/dispatch.html';
   if (pathname.startsWith('/service/')) pathname = '/index.html';
   if (pathname === '/admin' || pathname === '/admin/') pathname = '/operator.html';
