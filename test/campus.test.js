@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 const test = require('node:test');
+const crypto = require('node:crypto');
 
 const collections = new Map();
 let nextId = 1;
@@ -50,8 +51,11 @@ Module._load = function patchedLoad(request, parent, isMain) {
   if (request === 'wx-server-sdk') return cloudMock;
   return originalLoad.call(this, request, parent, isMain);
 };
-process.env.CAMPUS_OPERATOR_KEY = 'operator-key-for-test';
-process.env.CAMPUS_OUTLET_KEY = 'outlet-key-for-test';
+const phoneHash = (phone) => crypto.createHash('sha256').update(phone).digest('hex');
+const operatorPhone = '13900000001';
+const outletPhone = '13900000002';
+process.env.CAMPUS_OPERATOR_PHONE_HASHES = phoneHash(operatorPhone);
+process.env.CAMPUS_OUTLET_PHONE_HASHES = phoneHash(outletPhone);
 const campusFunction = require('../cloudfunctions/quickstartFunctions/index.js');
 Module._load = originalLoad;
 
@@ -61,18 +65,23 @@ async function call(type, data = {}, openid = currentOpenId) {
 }
 
 test.after(() => {
-  delete process.env.CAMPUS_OPERATOR_KEY;
-  delete process.env.CAMPUS_OUTLET_KEY;
+  delete process.env.CAMPUS_OPERATOR_PHONE_HASHES;
+  delete process.env.CAMPUS_OUTLET_PHONE_HASHES;
 });
 
 test('三端云函数权限、选号隔离和实名激活闭环', async () => {
-  const denied = await call('campusStaffLogin', { staffKey: 'wrong-key', role: 'operator' }, 'operator-user');
+  const deniedRegister = await call('campusStaffRegister', { phone: '13900000003', password: 'OperatorA123', confirmPassword: 'OperatorA123', role: 'operator' }, 'operator-user');
+  assert.equal(deniedRegister.errCode, 'STAFF_PHONE_UNAUTHORIZED');
+  const denied = await call('campusStaffLogin', { phone: operatorPhone, password: 'WrongPass123', role: 'operator' }, 'operator-user');
   assert.equal(denied.errCode, 'STAFF_UNAUTHORIZED');
 
-  const operatorLogin = await call('campusStaffLogin', { staffKey: 'operator-key-for-test', role: 'operator' }, 'operator-user');
+  const operatorRegister = await call('campusStaffRegister', { phone: operatorPhone, password: 'OperatorA123', confirmPassword: 'OperatorA123', role: 'operator' }, 'operator-user');
+  assert.equal(operatorRegister.success, true);
+  const operatorLogin = await call('campusStaffLogin', { phone: operatorPhone, password: 'OperatorA123', role: 'operator' }, 'operator-user');
   assert.equal(operatorLogin.success, true);
+  const operatorSession = operatorLogin.data.staffSession;
   const imported = await call('campusImportNumbers', {
-    staffKey: 'operator-key-for-test',
+    staffSession: operatorSession,
     rows: [{ operator: '中国移动', phone: '13800000001', planName: '校园套餐', monthlyFee: 39, outletAddress: '东门营业厅' },
       { operator: '中国联通', phone: '18600000001', planName: '联通套餐', monthlyFee: 29, outletAddress: '西门营业厅' }],
   }, 'operator-user');
@@ -104,24 +113,27 @@ test('三端云函数权限、选号隔离和实名激活闭环', async () => {
   ]);
   assert.deepEqual(concurrent.map((item) => item.success).sort(), [false, true]);
 
-  const operatorOnly = await call('campusAssignOutlet', { staffKey: 'outlet-key-for-test', orderId: reserved.data.orderId, outletAddress: '错误地址' }, 'outlet-user');
+  const outletRegister = await call('campusStaffRegister', { phone: outletPhone, password: 'OutletA12345', confirmPassword: 'OutletA12345', role: 'outlet' }, 'outlet-user');
+  assert.equal(outletRegister.success, true);
+  const outletLogin = await call('campusStaffLogin', { phone: outletPhone, password: 'OutletA12345', role: 'outlet' }, 'outlet-user');
+  assert.equal(outletLogin.data.role, 'outlet');
+  const outletSession = outletLogin.data.staffSession;
+  const operatorOnly = await call('campusAssignOutlet', { staffSession: outletSession, orderId: reserved.data.orderId, outletAddress: '错误地址' }, 'outlet-user');
   assert.equal(operatorOnly.errCode, 'STAFF_UNAUTHORIZED');
-  const assigned = await call('campusAssignOutlet', { staffKey: 'operator-key-for-test', orderId: reserved.data.orderId, outletAddress: '北门营业厅' }, 'operator-user');
+  const assigned = await call('campusAssignOutlet', { staffSession: operatorSession, orderId: reserved.data.orderId, outletAddress: '北门营业厅' }, 'operator-user');
   assert.equal(assigned.success, true);
 
-  const outletLogin = await call('campusStaffLogin', { staffKey: 'outlet-key-for-test', role: 'outlet' }, 'outlet-user');
-  assert.equal(outletLogin.data.role, 'outlet');
   const operatorCannotVerify = await call('campusImportVerification', {
-    staffKey: 'operator-key-for-test', role: 'operator', messages: [{ featureCode: reserved.data.featureCode, idCard: '110101199001010001', result: 'verified' }],
+    staffSession: operatorSession, messages: [{ featureCode: reserved.data.featureCode, idCard: '110101199001010001', result: 'verified' }],
   }, 'operator-user');
   assert.equal(operatorCannotVerify.errCode, 'STAFF_UNAUTHORIZED');
 
   const invalidId = await call('campusImportVerification', {
-    staffKey: 'outlet-key-for-test', role: 'outlet', messages: [{ featureCode: reserved.data.featureCode, idCard: '110101199001010002', result: 'verified' }],
+    staffSession: outletSession, messages: [{ featureCode: reserved.data.featureCode, idCard: '110101199001010002', result: 'verified' }],
   }, 'outlet-user');
   assert.equal(invalidId.data.results[0].success, true);
   const replay = await call('campusImportVerification', {
-    staffKey: 'outlet-key-for-test', role: 'outlet', messages: [{ featureCode: reserved.data.featureCode, idCard: '110101199001010002', result: 'verified' }],
+    staffSession: outletSession, messages: [{ featureCode: reserved.data.featureCode, idCard: '110101199001010002', result: 'verified' }],
   }, 'outlet-user');
   assert.equal(replay.data.results[0].message, '该订单已经激活');
   const activated = (await call('campusStudentOrders', {}, 'student-a')).data.orders[0];

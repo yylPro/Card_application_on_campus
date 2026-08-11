@@ -160,7 +160,7 @@ const deleteRecord = async (event) => {
 
 // Campus service data is kept separate from the QuickStart `sales` collection.
 // This lets the existing demo actions continue to work unchanged.
-const campusCollections = ["campus_numbers", "campus_orders"];
+const campusCollections = ["campus_numbers", "campus_orders", "campus_staff_accounts", "campus_staff_sessions"];
 const campusOperators = new Set(["中国移动", "中国联通", "中国电信"]);
 
 const campusText = (value, maxLength) => String(value == null ? "" : value).trim().slice(0, maxLength);
@@ -176,19 +176,85 @@ const campusOk = (data) => ({ success: true, data });
 
 const campusOpenId = () => cloud.getWXContext().OPENID || "";
 
-const campusStaffKeyMatches = (value, role = "operator") => {
-  const roleKey = role === "outlet" ? process.env.CAMPUS_OUTLET_KEY : process.env.CAMPUS_OPERATOR_KEY;
-  const configured = String(roleKey || process.env.CAMPUS_STAFF_KEY || "");
-  const supplied = String(value || "");
-  if (!configured || !supplied || configured.length !== supplied.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(configured), Buffer.from(supplied));
+const campusRole = (role) => role === "outlet" ? "outlet" : "operator";
+const campusHash = (value) => crypto.createHash("sha256").update(String(value || "")).digest("hex");
+const campusPhoneHash = (phone) => campusHash(campusText(phone, 20));
+const campusSessionHash = (token) => campusHash(token);
+const campusPasswordValid = (password) => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{9,15}$/.test(String(password || ""));
+const campusPasswordHash = (password, salt = crypto.randomBytes(16).toString("hex")) => ({
+  salt,
+  hash: crypto.scryptSync(String(password), salt, 32).toString("hex"),
+});
+const campusPasswordMatches = (password, account) => {
+  if (!account?.passwordSalt || !account?.passwordHash) return false;
+  const actual = Buffer.from(campusPasswordHash(password, account.passwordSalt).hash, "hex");
+  const expected = Buffer.from(account.passwordHash, "hex");
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+};
+const campusAuthorizedPhoneHashes = (role) => {
+  const roleKey = campusRole(role) === "outlet" ? "CAMPUS_OUTLET_PHONE_HASHES" : "CAMPUS_OPERATOR_PHONE_HASHES";
+  return new Set([process.env.CAMPUS_STAFF_PHONE_HASHES, process.env[roleKey]].flatMap((value) => String(value || "").split(",")).map((value) => value.trim().toLowerCase()).filter(Boolean));
+};
+const campusPhoneAuthorized = (phone, role) => {
+  const hashes = campusAuthorizedPhoneHashes(role);
+  if (!hashes.size) return false;
+  return hashes.has(campusPhoneHash(phone));
 };
 
-const campusRequireStaff = (event, role = "operator") => {
-  if (campusStaffKeyMatches(event.staffKey, role)) return null;
-  const configured = role === "outlet" ? process.env.CAMPUS_OUTLET_KEY : process.env.CAMPUS_OPERATOR_KEY;
-  if (!configured && !process.env.CAMPUS_STAFF_KEY) return campusError(`云函数未配置 ${role === "outlet" ? "CAMPUS_OUTLET_KEY" : "CAMPUS_OPERATOR_KEY"}`, "STAFF_KEY_NOT_CONFIGURED");
-  return campusError("管理口令不正确", "STAFF_UNAUTHORIZED");
+const campusIssueStaffSession = async (account) => {
+  const token = crypto.randomBytes(32).toString("base64url");
+  const now = Date.now();
+  await db.collection("campus_staff_sessions").add({
+    data: {
+      tokenHash: campusSessionHash(token),
+      role: account.role,
+      phoneHash: account.phoneHash,
+      createdAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + 8 * 60 * 60 * 1000).toISOString(),
+    },
+  });
+  return token;
+};
+
+const campusRequireStaff = async (event, role = "operator") => {
+  const session = campusText(event.staffSession, 200);
+  if (!session) return campusError("请先使用授权手机号登录", "STAFF_SESSION_REQUIRED");
+  const sessions = await campusRead("campus_staff_sessions", { tokenHash: campusSessionHash(session), role: campusRole(role) });
+  const active = sessions.find((item) => new Date(item.expiresAt).getTime() > Date.now());
+  if (!active) return campusError("无权执行此操作或登录已失效", "STAFF_UNAUTHORIZED");
+  return null;
+};
+
+const campusStaffRegister = async (event) => {
+  const role = campusRole(event.role);
+  const phone = campusText(event.phone, 20).replace(/\s+/g, "");
+  const password = String(event.password || "");
+  if (!/^1\d{10}$/.test(phone)) return campusError("手机号格式不正确", "INVALID_PHONE");
+  if (password !== String(event.confirmPassword || "")) return campusError("两次密码不一致", "PASSWORD_MISMATCH");
+  if (!campusPhoneAuthorized(phone, role)) {
+    return campusAuthorizedPhoneHashes(role).size ? campusError("该手机号未获本线下端授权", "STAFF_PHONE_UNAUTHORIZED") : campusError(`云函数未配置 ${role === "outlet" ? "CAMPUS_OUTLET_PHONE_HASHES" : "CAMPUS_OPERATOR_PHONE_HASHES"}`, "STAFF_PHONE_NOT_CONFIGURED");
+  }
+  if (!campusPasswordValid(password)) return campusError("密码需为 9-15 位且包含大小写字母和数字", "INVALID_PASSWORD");
+  await campusEnsureCollections();
+  const phoneHash = campusPhoneHash(phone);
+  if ((await campusRead("campus_staff_accounts", { phoneHash, role })).length) return campusError("该授权手机号已注册，请直接登录", "STAFF_ALREADY_REGISTERED");
+  const passwordData = campusPasswordHash(password);
+  const account = { phoneHash, role, passwordSalt: passwordData.salt, passwordHash: passwordData.hash, status: "active", createdAt: campusNow(), updatedAt: campusNow() };
+  await db.collection("campus_staff_accounts").add({ data: account });
+  const staffSession = await campusIssueStaffSession(account);
+  return campusOk({ role, staffSession });
+};
+
+const campusStaffLogin = async (event) => {
+  const role = campusRole(event.role);
+  const phone = campusText(event.phone, 20).replace(/\s+/g, "");
+  const password = String(event.password || "");
+  if (!/^1\d{10}$/.test(phone) || !campusPasswordValid(password)) return campusError("手机号或密码错误", "STAFF_UNAUTHORIZED");
+  await campusEnsureCollections();
+  const account = (await campusRead("campus_staff_accounts", { phoneHash: campusPhoneHash(phone), role, status: "active" }))[0];
+  if (!account || !campusPhoneAuthorized(phone, role) || !campusPasswordMatches(password, account)) return campusError("手机号或密码错误", "STAFF_UNAUTHORIZED");
+  const staffSession = await campusIssueStaffSession(account);
+  return campusOk({ role, staffSession });
 };
 
 const campusEnsureCollections = async () => {
@@ -342,7 +408,7 @@ const campusStudentOrders = async () => {
 };
 
 const campusImportNumbers = async (event) => {
-  const authError = campusRequireStaff(event);
+  const authError = await campusRequireStaff(event);
   if (authError) return authError;
   const rows = Array.isArray(event.rows) ? event.rows.slice(0, 500) : [];
   if (!rows.length) return campusError("没有可导入的号码", "INVALID_INPUT");
@@ -383,7 +449,7 @@ const campusImportNumbers = async (event) => {
 };
 
 const campusListOrders = async (event) => {
-  const authError = campusRequireStaff(event);
+  const authError = await campusRequireStaff(event);
   if (authError) return authError;
   const orders = (await campusRead("campus_orders"))
     .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
@@ -410,7 +476,7 @@ const campusListOrders = async (event) => {
 };
 
 const campusAssignOutlet = async (event) => {
-  const authError = campusRequireStaff(event);
+  const authError = await campusRequireStaff(event);
   if (authError) return authError;
   const orderId = campusText(event.orderId, 80);
   const outletAddress = campusText(event.outletAddress, 160);
@@ -423,7 +489,7 @@ const campusAssignOutlet = async (event) => {
 const campusNormalizeIdCard = (value) => campusText(value, 18).toUpperCase().replace(/\s+/g, "");
 
 const campusImportVerification = async (event) => {
-  const authError = campusRequireStaff(event, "outlet");
+  const authError = await campusRequireStaff(event, "outlet");
   if (authError) return authError;
   const messages = Array.isArray(event.messages) ? event.messages.slice(0, 200) : [];
   if (!messages.length) return campusError("没有可导入的实名验证消息", "INVALID_INPUT");
@@ -516,9 +582,9 @@ exports.main = async (event, context) => {
     case "campusStudentOrders":
       return await campusStudentOrders(event);
     case "campusStaffLogin":
-      if (!campusStaffKeyMatches(event.staffKey, event.role)) return campusRequireStaff(event, event.role);
-      await campusEnsureCollections();
-      return campusOk({ role: event.role === "outlet" ? "outlet" : "operator" });
+      return await campusStaffLogin(event);
+    case "campusStaffRegister":
+      return await campusStaffRegister(event);
     case "campusImportNumbers":
       return await campusImportNumbers(event);
     case "campusListOrders":

@@ -1,1 +1,4 @@
 @import "../../styles/campus.wxss";
+.auth-mode { display: flex; gap: 12rpx; margin: 20rpx 0; }
+.auth-mode button { flex: 1; color: #0b6cb7; border: 1rpx solid #c9dce8; background: #fff; }
+.auth-mode .mode-active { color: #fff; background: #0b6cb7; }
