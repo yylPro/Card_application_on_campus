@@ -1206,11 +1206,13 @@ async function api(req, res, url) {
     if (!record.detail) return json(res, 400, { error: '请填写需求说明' });
     if (!record.type) return json(res, 400, { error: '请选择服务项目' });
     if (!record.serviceConsent) return json(res, 400, { error: '请先同意信息收集和后续联系说明' });
+    const isNumberOrder = url.pathname === '/api/orders' && record.type.includes('选号');
+    if (isNumberOrder && !record.address) return json(res, 400, { error: '请填写完整的收货地址' });
     let idImages;
     try {
       idImages = { front: parseIdImage(body.idCardFrontImage), back: parseIdImage(body.idCardBackImage) };
     } catch (error) { return json(res, 400, { error: error.message }); }
-    if (url.pathname === '/api/orders' && record.type.includes('选号')) {
+    if (isNumberOrder) {
       const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId && item.status === 'available');
       if (!offer) return json(res, 409, { error: '所选号码已被预占，请返回重新选择' });
       record.selectedNumber = offer.displayNumber;

@@ -206,16 +206,25 @@ function setService(title, kind) {
   document.getElementById('selectedNumberSummary').textContent = '尚未选择号码';
   const isNumberOrder = kind === 'order' && title.includes('选号');
   document.getElementById('modalTitle').textContent = title;
-  document.getElementById('modalIntro').textContent = kind === 'ticket'
-    ? '请尽量写清故障或咨询情况，工作人员会尽快安排处理。'
-    : '提交后，工作人员会与您确认服务时间和线下交付安排。';
-  serviceForm.elements.detail.placeholder = kind === 'ticket'
-    ? '例如：房间内宽带无法连接，路由器指示灯异常'
-    : '例如：希望选号、办理校园网账号或预约上门服务';
+  document.getElementById('modalIntro').textContent = isNumberOrder
+    ? '选择号码并填写收货地址；提交后请按进度查询中的地址前往线下实名认证。'
+    : kind === 'ticket'
+      ? '请尽量写清故障或咨询情况，工作人员会尽快安排处理。'
+      : '提交后，工作人员会与您确认服务时间和线下交付安排。';
+  serviceForm.elements.detail.placeholder = isNumberOrder
+    ? '可填写配送备注或其他选号需求'
+    : kind === 'ticket'
+      ? '例如：房间内宽带无法连接，路由器指示灯异常'
+      : '例如：办理校园网账号或预约上门服务';
   serviceForm.querySelector('.submit-button').textContent = kind === 'ticket' ? '提交工单' : '提交预约';
   document.getElementById('numberSelection').hidden = !isNumberOrder;
   serviceForm.elements.selectedOfferId.disabled = !isNumberOrder;
   serviceForm.elements.selectedOfferId.required = isNumberOrder;
+  document.getElementById('deliveryAddressField').hidden = !isNumberOrder;
+  serviceForm.elements.address.disabled = !isNumberOrder;
+  serviceForm.elements.address.required = isNumberOrder;
+  document.getElementById('appointmentField').hidden = isNumberOrder;
+  serviceForm.elements.appointment.disabled = isNumberOrder;
   if (!isNumberOrder) serviceForm.elements.selectedOfferId.value = '';
   document.getElementById('fulfillmentNote').hidden = !isNumberOrder;
   openModal(serviceModal);

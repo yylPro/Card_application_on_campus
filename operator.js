@@ -116,11 +116,11 @@ function renderRecords() {
     table.innerHTML = '<p class="empty-state">暂无服务记录。</p>';
     return;
   }
-  table.innerHTML = `<div class="record-row record-table-head"><span>学生/学校</span><span>服务事项</span><span>预约信息</span><span>状态</span><span>操作</span></div>${rows.map((record) => `
+  table.innerHTML = `<div class="record-row record-table-head"><span>学生/学校</span><span>服务事项</span><span>预约/收货信息</span><span>状态</span><span>操作</span></div>${rows.map((record) => `
     <article class="record-row">
       <span><strong>${escapeHtml(record.name)}</strong><small>${escapeHtml(record.schoolName)} · ${escapeHtml(record.phone)}</small></span>
       <span><strong>${escapeHtml(record.type)}</strong><small>${escapeHtml(record.detail)}</small></span>
-      <span><strong>${escapeHtml(record.appointment)}</strong><small>${formatTime(record.createdAt)}</small></span>
+      <span><strong>${escapeHtml(record.type.includes('选号') ? record.address : record.appointment)}</strong><small>${formatTime(record.createdAt)}</small></span>
       <span><span class="status-chip ${escapeHtml(record.status)}">${labelFrom(statusOptions, record.status)}</span><small>${labelFrom(verificationOptions, record.verificationStatus)}</small></span>
       <span><button class="outline-button record-open" data-record="${escapeHtml(record.id)}" data-category="${record.category}">处理</button></span>
     </article>
@@ -176,8 +176,8 @@ function openRecord(id, category) {
       <div><dt>学生</dt><dd>${escapeHtml(record.name)}（${escapeHtml(record.studentNo)}）</dd></div>
       <div><dt>手机</dt><dd>${escapeHtml(record.phone)}</dd></div>
       <div><dt>学校</dt><dd>${escapeHtml(record.schoolName)}</dd></div>
-      <div><dt>服务地址</dt><dd>${escapeHtml(record.address)}</dd></div>
-      <div><dt>期望时间</dt><dd>${escapeHtml(record.appointment)}</dd></div>
+      <div><dt>${isNumberOrder ? '收货地址' : '服务地址'}</dt><dd>${escapeHtml(record.address || '未填写')}</dd></div>
+      ${isNumberOrder ? '' : `<div><dt>期望时间</dt><dd>${escapeHtml(record.appointment)}</dd></div>`}
       <div><dt>负责人</dt><dd>${escapeHtml(record.assignee || '待派单')}</dd></div>
       <div><dt>预约服务</dt><dd>${record.scheduledAt ? formatTime(record.scheduledAt) : '待确认'}</dd></div>
       <div><dt>提交时间</dt><dd>${formatTime(record.createdAt)}</dd></div>

@@ -308,8 +308,13 @@ test('学校接口核验关闭后，订单统一标记为无需核验', async ()
 
 test('选号订单预占号码，取消后自动释放', async () => {
   const before = await request('/api/schools/XXU-2026/numbers');
+  const missingAddress = await createOrder('13700000006', { type: '新生选号预约', selectedOfferId: before.body.offers[0].id, address: '' });
+  assert.equal(missingAddress.response.status, 400);
+  assert.match(missingAddress.body.error, /收货地址/);
   const created = await createOrder(TEST_PHONES[1], { type: '新生选号预约', selectedOfferId: before.body.offers[0].id, fulfillmentMethod: '快递配送' });
   assert.equal(created.response.status, 201);
+  const storedAfterCreate = JSON.parse(fs.readFileSync(path.join(tempDir, 'db.json'), 'utf8'));
+  assert.equal(storedAfterCreate.orders.find((item) => item.id === created.body.record.id).address, '内测宿舍 1 栋 101');
   const reserved = await request('/api/schools/XXU-2026/numbers');
   assert.equal(reserved.body.offers.length, before.body.offers.length - 1);
   const cancelled = await updateRecord(await adminCookie(), created.body.record.id, { status: 'cancelled' });
