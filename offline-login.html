@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>线下实体端登录 · 校园通信服务</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="login-page">
+    <main class="login-shell">
+      <section class="login-panel">
+        <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>校园通信服务</span></a>
+        <div class="login-copy"><p class="eyebrow">线下实体端</p><h1>登录实名核验工作台</h1><p>导入现场实名验证消息，并按学生特征码和身份证号码完成匹配激活。</p></div>
+        <form id="offlineLoginForm">
+          <label>授权手机号<input name="phone" type="tel" inputmode="numeric" autocomplete="username" maxlength="11" pattern="1[0-9]{10}" required placeholder="请输入已授权手机号" /></label>
+          <label>密码<input name="password" type="password" autocomplete="current-password" minlength="9" maxlength="15" required placeholder="9-15位，含大小写字母和数字" /></label>
+          <button class="primary-button" type="submit">登录实体端</button>
+        </form>
+        <p class="login-hint">尚未注册？<a href="/offline/register">使用授权手机号注册</a></p>
+      </section>
+    </main>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="/offline-login.js"></script>
+  </body>
+</html>

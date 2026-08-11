@@ -24,6 +24,24 @@ fetch('/api/student/session')
 const identityInput = serviceForm.elements.idCard;
 const primaryPhoneInput = serviceForm.elements.phone;
 const backupPhoneInput = serviceForm.elements.backupPhone;
+function validIdCard(value) {
+  const normalized = String(value || '').toUpperCase();
+  if (!/^\d{17}[\dX]$/.test(normalized)) return false;
+  const provinceCodes = new Set(['11', '12', '13', '14', '15', '21', '22', '23', '31', '32', '33', '34', '35', '36', '37', '41', '42', '43', '44', '45', '46', '50', '51', '52', '53', '54', '61', '62', '63', '64', '65', '71', '81', '82']);
+  if (!provinceCodes.has(normalized.slice(0, 2)) || normalized.slice(14, 17) === '000') return false;
+  const year = Number(normalized.slice(6, 10));
+  const month = Number(normalized.slice(10, 12));
+  const day = Number(normalized.slice(12, 14));
+  const birthDate = new Date(year, month - 1, day);
+  if (birthDate.getFullYear() !== year || birthDate.getMonth() !== month - 1 || birthDate.getDate() !== day) return false;
+  const today = new Date();
+  const earliest = new Date(today.getFullYear() - 120, today.getMonth(), today.getDate());
+  if (birthDate > today || birthDate < earliest) return false;
+  const weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
+  const checkCodes = ['1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2'];
+  const sum = weights.reduce((total, weight, index) => total + Number(normalized[index]) * weight, 0);
+  return normalized[17] === checkCodes[sum % 11];
+}
 identityInput.setAttribute('minlength', '18');
 identityInput.setAttribute('maxlength', '18');
 identityInput.setAttribute('pattern', '[0-9]{17}[0-9Xx]');
@@ -74,7 +92,7 @@ document.getElementById('nextServiceStepButton')?.addEventListener('click', (eve
   const phone = primaryPhoneInput.value.trim();
   const backupPhone = backupPhoneInput.value.trim();
   const password = studentPasswordInput.value.trim();
-  const error = !/^\d{17}[\dXx]$/.test(idCard) ? '身份证号码必须为 18 位，末位可为 X'
+  const error = !validIdCard(idCard) ? '身份证号格式或校验位不正确，请核对后重试'
     : !/^1\d{10}$/.test(phone) ? '联系电话必须为 11 位数字'
       : backupPhone && !/^1\d{10}$/.test(backupPhone) ? '备用联系电话必须为 11 位数字'
         : !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{9,15}$/.test(password) ? '办理密码需为 9-15 位且包含大小写字母和数字' : '';
@@ -174,6 +192,12 @@ function showToast(message, isError = false) {
   window.setTimeout(() => toast.classList.remove('show'), 3200);
 }
 
+function escapeHtml(value) {
+  const node = document.createElement('span');
+  node.textContent = String(value ?? '');
+  return node.innerHTML;
+}
+
 function openModal(modal) {
   modal.hidden = false;
   document.body.classList.add('modal-open');
@@ -256,6 +280,7 @@ function renderRecords(records) {
     <article class="record-item">
       <div><strong>${record.type}</strong><small>${record.id} · ${formatTime(record.createdAt)}${record.operator ? ` · ${record.operator} ${record.selectedNumber || ''}` : ''}</small></div>
       <span class="status-chip ${record.status}">${statusLabel(record.status)}</span>
+      ${record.offline ? `<div class="offline-instruction ${record.activationStatus === 'activated' ? 'verified' : ''}"><strong>${record.activationStatus === 'activated' ? '号码已实名激活' : '请前往线下实名验证'}</strong><span>${escapeHtml(record.offline.location)}</span><code>${record.activationStatus === 'activated' ? '已激活' : escapeHtml(record.offline.featureCode)}</code></div>` : record.selectedNumber && record.activationStatus === 'pending' ? '<small>运营商正在分配线下实名地址和特征码</small>' : ''}
       ${record.voucher?.status === 'issued' ? `<div class="voucher-card"><strong>线下领卡凭证</strong><img src="${record.voucher.qrDataUrl}" alt="线下核销二维码" /><small>有效至 ${formatTime(record.voucher.expiresAt)}；到服务点出示后，须验证原手机号。</small></div>` : ''}
       ${record.voucher && record.voucher.status !== 'issued' ? `<small class="record-confirmed">领卡凭证：${record.voucher.status === 'redeemed' ? '已核销' : record.voucher.status === 'expired' ? '已过期' : '已作废'}</small>` : ''}
       ${record.status === 'completed' && !record.completionConfirmedAt ? `<button class="text-button completion-open" data-completion-record="${record.id}">确认完成</button>` : ''}

@@ -4,6 +4,9 @@ node_modules/
 data/db.json
 certs/
 data/id-images/
+data/*.json
+*.key
+campus-*.xlsx
 npm-debug.log*
 project.private.config.json
 *.log

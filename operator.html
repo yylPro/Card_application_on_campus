@@ -13,15 +13,16 @@
         <p class="nav-title">运营管理</p>
         <nav class="admin-nav">
           <a class="active" href="#overview">服务概览</a>
+          <a href="#offlineSettings">线下实名地址</a>
           <a href="#schoolQr">学校二维码</a>
           <a href="#records">订单与工单</a>
         </nav>
-        <div class="admin-side-note"><strong>数据权限提示</strong><p>学校和学院仅用于登记分类；后台仅供授权运营商人员处理业务信息。</p></div>
+        <div class="admin-side-note"><strong>数据权限提示</strong><p>运营商端负责号码资源、线下地址和特征码分配；实名消息只由线下实体端导入。</p></div>
       </aside>
       <main class="admin-main">
         <header class="admin-header" id="overview">
-          <div><p class="eyebrow">运营商端</p><h1>校园通信服务管理</h1><p>统一处理学校二维码、预约订单与宽带维护工单。</p></div>
-          <div class="admin-header-actions"><button class="outline-button" id="refreshButton">刷新数据</button><button class="outline-button" id="exportButton">导出全部</button><button class="outline-button" id="exportPendingButton">导出待处理</button><button class="text-button" id="logoutButton">退出</button></div>
+          <div><p class="eyebrow">运营商端</p><h1>校园通信服务管理</h1><p>导入号码、管理选号订单，并向学生派发线下实名地址与特征码。</p></div>
+          <div class="admin-header-actions"><button class="outline-button" id="refreshButton">刷新数据</button><button class="outline-button" id="exportButton">导出全部</button><button class="outline-button" id="exportPendingButton">导出待处理</button><button class="outline-button" id="exportActivatedButton">导出已激活</button><button class="text-button" id="logoutButton">退出</button></div>
         </header>
 
         <section class="metric-grid admin-metrics">
@@ -30,6 +31,15 @@
           <article><span>待处理工单</span><strong id="metricTickets">0</strong><small>维修与业务咨询</small></article>
           <article><span>启用学校</span><strong id="metricSchools">0</strong><small>当前可用二维码入口</small></article>
           <article><span>可选号码</span><strong id="metricNumbers">0</strong><small>未被预占的号码资源</small></article>
+        </section>
+
+        <section class="admin-section" id="offlineSettings">
+          <div class="section-title"><div><p class="eyebrow">全局办理设置</p><h2>线下实名认证地址</h2></div><p>该地址适用于全部尚未激活及后续新增的选号订单，每个学生仍使用各自唯一的特征码。</p></div>
+          <form class="offline-settings-form" id="offlineSettingsForm">
+            <label>可办理线下实名认证的地址<input name="verificationAddress" maxlength="160" required placeholder="例如：东校区大学生活动中心一楼运营商服务点" /></label>
+            <button class="primary-button" type="submit">保存全局地址</button>
+          </form>
+          <small class="settings-meta" id="offlineSettingsMeta">尚未设置线下实名认证地址</small>
         </section>
 
         <section class="admin-section" id="numberOffers">
