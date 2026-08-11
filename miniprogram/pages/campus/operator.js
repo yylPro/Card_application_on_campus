@@ -5,7 +5,7 @@ Page({
   setField(event) { this.setData({ [event.currentTarget.dataset.key]: event.detail.value }); },
   async login() {
     if (!this.data.staffKey) return wx.showToast({ title: "请输入管理口令", icon: "none" });
-    try { await callCampus("campusStaffLogin", { staffKey: this.data.staffKey }); this.setData({ loggedIn: true }); this.loadOrders(); } catch (error) { wx.showToast({ title: error.message, icon: "none" }); }
+    try { await callCampus("campusStaffLogin", { staffKey: this.data.staffKey, role: "operator" }); this.setData({ loggedIn: true }); this.loadOrders(); } catch (error) { wx.showToast({ title: error.message, icon: "none" }); }
   },
   parseNumbers() {
     return this.data.numberText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {

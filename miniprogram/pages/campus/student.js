@@ -11,6 +11,9 @@ Page({
     name: "",
     studentNo: "",
     phone: "",
+    shippingRecipient: "",
+    shippingPhone: "",
+    shippingAddress: "",
     orders: [],
     loading: false,
   },
@@ -58,8 +61,12 @@ Page({
   },
   async reserve() {
     const data = this.data;
-    if (!data.name || !data.phone || !data.selectedOfferId) {
-      wx.showToast({ title: "请填写姓名、手机号并选择号码", icon: "none" });
+    if (!data.name || !data.phone || !data.shippingRecipient || !data.shippingPhone || !data.shippingAddress || !data.selectedOfferId) {
+      wx.showToast({ title: "请完整填写身份、收货信息并选择号码", icon: "none" });
+      return;
+    }
+    if (!/^1\d{10}$/.test(data.phone) || !/^1\d{10}$/.test(data.shippingPhone)) {
+      wx.showToast({ title: "联系电话格式不正确", icon: "none" });
       return;
     }
     this.setData({ loading: true });
@@ -68,6 +75,9 @@ Page({
         name: data.name,
         studentNo: data.studentNo,
         phone: data.phone,
+        shippingRecipient: data.shippingRecipient,
+        shippingPhone: data.shippingPhone,
+        shippingAddress: data.shippingAddress,
         offerId: data.selectedOfferId,
       });
       wx.showModal({
@@ -75,7 +85,7 @@ Page({
         content: `特征码：${result.featureCode}\n办理地址：${result.outletAddress}`,
         showCancel: false,
       });
-      this.setData({ name: "", studentNo: "", phone: "", selectedOfferId: "" });
+      this.setData({ name: "", studentNo: "", phone: "", shippingRecipient: "", shippingPhone: "", shippingAddress: "", selectedOfferId: "" });
       this.loadOffers();
       this.loadOrders();
     } catch (error) {

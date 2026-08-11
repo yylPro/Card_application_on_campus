@@ -14,7 +14,21 @@ class Storage {
     if (this.driver === 'json') return this.normalize(JSON.parse(fs.readFileSync(this.file, 'utf8')));
     if (this.driver === 'sqlserver') {
       const sql = require('mssql');
-      this.pool = await sql.connect({ server: process.env.DB_HOST || 'localhost', database: process.env.DB_NAME || 'CampusService', user: process.env.DB_USER, password: process.env.DB_PASSWORD, options: { encrypt: process.env.DB_ENCRYPT === 'true', trustServerCertificate: process.env.DB_TRUST_CERT !== 'false' } });
+      const instanceName = String(process.env.DB_INSTANCE || '').trim();
+      const port = Number(process.env.DB_PORT || 0);
+      const config = {
+        server: process.env.DB_HOST || 'localhost',
+        database: process.env.DB_NAME || 'CampusService',
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        options: {
+          encrypt: process.env.DB_ENCRYPT === 'true',
+          trustServerCertificate: process.env.DB_TRUST_CERT !== 'false',
+          ...(instanceName ? { instanceName } : {})
+        }
+      };
+      if (!instanceName && Number.isInteger(port) && port > 0) config.port = port;
+      this.pool = await sql.connect(config);
       await this.pool.request().query("IF OBJECT_ID(N'dbo.campus_snapshot', N'U') IS NULL CREATE TABLE dbo.campus_snapshot (id tinyint NOT NULL PRIMARY KEY, payload nvarchar(max) NOT NULL, updated_at datetime2 NOT NULL DEFAULT SYSUTCDATETIME())");
       const result = await this.pool.request().query('SELECT payload FROM dbo.campus_snapshot WHERE id=1');
       if (!result.recordset.length) { await this.save(this.initial); return this.normalize(this.initial); }

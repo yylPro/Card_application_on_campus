@@ -185,6 +185,9 @@ function normalizeDb(db) {
     if (!record.idCard) record.idCard = '';
     if (!record.college) record.college = '';
     if (!record.backupPhone) record.backupPhone = '';
+    if (!record.shippingRecipient) record.shippingRecipient = record.name || '';
+    if (!record.shippingPhone) record.shippingPhone = record.phone || '';
+    if (!record.shippingAddress) record.shippingAddress = record.address || '';
     if (!record.idCardFrontFile) record.idCardFrontFile = '';
     if (!record.idCardBackFile) record.idCardBackFile = '';
     if (!record.passwordHash) record.passwordHash = '';
@@ -633,9 +636,9 @@ function csvEscape(value) {
 }
 
 function csv(records) {
-  const header = ['服务编号', '学校', '姓名', '学号', '身份证号码', '学院', '手机号', '服务事项', '运营商', '意向号码', '交付方式', '服务地址', '预约时间', '需求说明', '服务状态', '交付进度', '实名激活', '补贴状态', '补贴金额', '营销授权', '内部备注', '创建时间'];
+  const header = ['服务编号', '学校', '姓名', '学号', '身份证号码', '学院', '手机号', '收货人', '联系号码', '收货地址', '服务事项', '运营商', '意向号码', '交付方式', '服务地址', '预约时间', '需求说明', '服务状态', '交付进度', '实名激活', '补贴状态', '补贴金额', '营销授权', '内部备注', '创建时间'];
   const rows = records.map((record) => [
-    record.id, record.schoolName, record.name, record.studentNo, record.idCard, record.college, record.phone, record.type,
+    record.id, record.schoolName, record.name, record.studentNo, record.idCard, record.college, record.phone, record.shippingRecipient, record.shippingPhone, record.shippingAddress, record.type,
     record.operator, record.selectedNumber, record.fulfillmentMethod, record.address, record.appointment, record.detail, record.status,
     record.deliveryStatus, record.activationStatus, record.subsidyStatus, record.subsidyAmount,
     record.marketingConsent ? '是' : '否', record.internalNote, record.createdAt
@@ -648,7 +651,7 @@ async function api(req, res, url) {
   const db = readDb();
 
   if (req.method === 'GET' && url.pathname === '/api/health') {
-    return json(res, 200, { status: 'ok', time: new Date().toISOString() });
+    return json(res, 200, { status: 'ok', databaseDriver: DB_DRIVER, databaseReady: Boolean(runtimeDb), time: new Date().toISOString() });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/auth/login') {
@@ -887,6 +890,9 @@ async function api(req, res, url) {
       college: safe(body.college, 80),
       phone: studentSession?.user || safe(body.phone, 20),
       backupPhone: safe(body.backupPhone, 20),
+      shippingRecipient: safe(body.shippingRecipient, 40),
+      shippingPhone: safe(body.shippingPhone, 20),
+      shippingAddress: safe(body.shippingAddress, 160),
       passwordHash: '',
       address: safe(body.address, 160),
       appointment: safe(body.appointment, 60) || '尽快联系',
@@ -925,7 +931,6 @@ async function api(req, res, url) {
     if (!record.college) return json(res, 400, { error: '请输入所属学院' });
     if (!validPhone(record.phone)) return json(res, 400, { error: '请输入正确的 11 位手机号码' });
     if (record.backupPhone && !validPhone(record.backupPhone)) return json(res, 400, { error: '备用联系电话应为正确的 11 位手机号码' });
-    if (!record.detail) return json(res, 400, { error: '请填写需求说明' });
     if (!record.type) return json(res, 400, { error: '请选择服务项目' });
     if (!record.serviceConsent) return json(res, 400, { error: '请先同意信息收集和后续联系说明' });
     try {
@@ -933,6 +938,9 @@ async function api(req, res, url) {
       record.idCardBackFile = saveIdImage(body.idCardBackImage, record.id, 'back');
     } catch (error) { return json(res, 400, { error: error.message }); }
     if (url.pathname === '/api/orders' && record.type.includes('选号')) {
+      if (!record.shippingRecipient) return json(res, 400, { error: '请输入收货人' });
+      if (!validPhone(record.shippingPhone)) return json(res, 400, { error: '请输入正确的收货联系号码' });
+      if (!record.shippingAddress) return json(res, 400, { error: '请输入收货地址' });
       const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId && item.status === 'available');
       if (!offer) return json(res, 409, { error: '所选号码已被预占，请返回重新选择' });
       record.selectedNumber = offer.displayNumber;
@@ -942,6 +950,7 @@ async function api(req, res, url) {
       record.activationStatus = 'pending';
       record.subsidyStatus = 'pending';
     } else {
+      if (!record.detail) return json(res, 400, { error: '请填写需求说明' });
       record.selectedNumber = '';
       record.fulfillmentMethod = '';
     }
@@ -1202,7 +1211,7 @@ async function api(req, res, url) {
     const type = url.searchParams.get('type');
     const records = type === 'order' ? db.orders : type === 'ticket' ? db.tickets : [...db.orders, ...db.tickets];
     const sortedRecords = [...records].sort((a, b) => `${a.schoolName || ''}\u0000${a.college || ''}`.localeCompare(`${b.schoolName || ''}\u0000${b.college || ''}`, 'zh-CN'));
-    const rows = sortedRecords.map((record) => ({ 服务编号: record.id, 学校: record.schoolName, 学院: record.college, 姓名: record.name, 学号: record.studentNo, 身份证号码: record.idCard, 联系电话: record.phone, 备用联系电话: record.backupPhone, 运营商: record.operator, 意向号码: record.selectedNumber, 服务事项: record.type, 状态: record.status, 创建时间: record.createdAt }));
+    const rows = sortedRecords.map((record) => ({ 服务编号: record.id, 学校: record.schoolName, 学院: record.college, 姓名: record.name, 学号: record.studentNo, 身份证号码: record.idCard, 联系电话: record.phone, 备用联系电话: record.backupPhone, 收货人: record.shippingRecipient, 收货联系号码: record.shippingPhone, 收货地址: record.shippingAddress, 运营商: record.operator, 意向号码: record.selectedNumber, 服务事项: record.type, 状态: record.status, 创建时间: record.createdAt }));
     const grouped = new Map();
     for (const record of sortedRecords) {
       const key = `${record.schoolName || '未填写学校'}\u0000${record.college || '其他学院'}`;
@@ -1224,7 +1233,7 @@ async function api(req, res, url) {
     if (!requireAdmin(req, res)) return;
     const pendingStatuses = new Set(['pending', 'contacting', 'assigned', 'scheduled', 'processing']);
     const records = [...db.orders, ...db.tickets].filter((record) => pendingStatuses.has(record.status));
-    const rows = records.map((record) => ({ 服务编号: record.id, 学校: record.schoolName, 学院: record.college, 姓名: record.name, 学号: record.studentNo, 身份证号码: record.idCard, 联系电话: record.phone, 备用联系电话: record.backupPhone, 运营商: record.operator, 意向号码: record.selectedNumber, 服务事项: record.type, 状态: record.status, 创建时间: record.createdAt }));
+    const rows = records.map((record) => ({ 服务编号: record.id, 学校: record.schoolName, 学院: record.college, 姓名: record.name, 学号: record.studentNo, 身份证号码: record.idCard, 联系电话: record.phone, 备用联系电话: record.backupPhone, 收货人: record.shippingRecipient, 收货联系号码: record.shippingPhone, 收货地址: record.shippingAddress, 运营商: record.operator, 意向号码: record.selectedNumber, 服务事项: record.type, 状态: record.status, 创建时间: record.createdAt }));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), '待处理');
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });

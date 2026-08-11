@@ -7,7 +7,9 @@
   <view wx:if="{{isNumberOrder}}" class="field">运营商<picker range="{{operators}}" bindchange="pickOperator"><view class="picker">{{operator}}</view></picker></view>
   <view wx:if="{{isNumberOrder}}" class="field">意向号码<picker range="{{numbers}}" bindchange="pickNumber"><view class="picker">{{selectedNumber}}</view></picker><view class="row"><button size="mini" bindtap="previousPage" disabled="{{page <= 1}}">上一页</button><text class="muted">第 {{page}} / {{totalPages}} 页</text><button size="mini" bindtap="nextPage" disabled="{{page >= totalPages}}">下一页</button></view></view>
   <view class="field">希望时间<picker range="{{appointments}}" bindchange="pickAppointment"><view class="picker">{{appointment}}</view></picker></view>
-  <view class="field">需求说明<textarea class="textarea" data-key="detail" bindinput="setField" placeholder="请描述具体需求" /></view>
+  <view class="field">收货人<input class="input" data-key="shippingRecipient" bindinput="setField" placeholder="请输入收货人姓名" /></view>
+  <view class="field">联系号码<input class="input" data-key="shippingPhone" type="number" maxlength="11" bindinput="setField" placeholder="请输入收货联系电话" /></view>
+  <view class="field">收货地址<input class="input" data-key="shippingAddress" bindinput="setField" placeholder="请输入详细收货地址" /></view>
   <label class="consent"><checkbox checked="{{serviceConsent}}" bindchange="toggleService" />我同意将上述信息用于校园通信服务信息收集和后续联系。</label>
   <label class="consent"><checkbox checked="{{marketingConsent}}" bindchange="toggleMarketing" />我同意接收优惠信息（可不选）。</label>
   <button class="primary" bindtap="submit">提交{{kind === 'ticket' ? '工单' : '预约'}}</button>

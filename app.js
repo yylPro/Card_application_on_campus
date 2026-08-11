@@ -78,7 +78,11 @@ document.getElementById('nextServiceStepButton')?.addEventListener('click', (eve
     : !/^1\d{10}$/.test(phone) ? '联系电话必须为 11 位数字'
       : backupPhone && !/^1\d{10}$/.test(backupPhone) ? '备用联系电话必须为 11 位数字'
         : !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{9,15}$/.test(password) ? '办理密码需为 9-15 位且包含大小写字母和数字' : '';
-  if (!error) return;
+  if (!error) {
+    if (!serviceForm.elements.shippingRecipient.value.trim()) serviceForm.elements.shippingRecipient.value = serviceForm.elements.name.value.trim();
+    if (!serviceForm.elements.shippingPhone.value.trim()) serviceForm.elements.shippingPhone.value = phone;
+    return;
+  }
   event.stopImmediatePropagation();
   showToast(error, true);
 }, true);
@@ -204,18 +208,19 @@ function startCodeCooldown(button) {
 }
 
 function setService(title, kind) {
+  const isNumberOrder = kind === 'order' && title.includes('选号');
+  if (!isNumberOrder) {
+    showToast('该功能未开放，敬请期待');
+    return;
+  }
   selectedService = { title, kind };
   document.getElementById('studentInfoStep').hidden = false;
   document.getElementById('serviceOptionsStep').hidden = true;
   document.getElementById('selectedNumberSummary').textContent = '尚未选择号码';
-  const isNumberOrder = kind === 'order' && title.includes('选号');
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('modalIntro').textContent = kind === 'ticket'
     ? '请尽量写清故障或咨询情况，工作人员会尽快安排处理。'
     : '提交后，工作人员会与您确认服务时间和线下交付安排。';
-  serviceForm.elements.detail.placeholder = kind === 'ticket'
-    ? '例如：房间内宽带无法连接，路由器指示灯异常'
-    : '例如：希望选号、办理校园网账号或预约上门服务';
   serviceForm.querySelector('.submit-button').textContent = kind === 'ticket' ? '提交工单' : '提交预约';
   document.getElementById('numberSelection').hidden = !isNumberOrder;
   serviceForm.elements.selectedOfferId.disabled = !isNumberOrder;

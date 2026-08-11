@@ -8,6 +8,7 @@
     <view wx:for="{{orders}}" wx:key="id" class="record">
       <view class="record-top"><text>{{item.name}} · {{item.displayNumber}}</text><text class="status {{item.status}}">{{item.status === 'activated' ? '已激活' : '待实名'}}</text></view>
       <view class="record-line">特征码：{{item.featureCode}}　{{item.operator}}</view><view class="record-line">学生电话：{{item.phone}}</view>
+      <view class="record-line">收货人：{{item.shippingRecipient}}　联系号码：{{item.shippingPhone}}</view><view class="record-line">收货地址：{{item.shippingAddress}}</view>
       <view class="address-row"><input class="input" value="{{item.outletAddress}}" data-index="{{index}}" bindinput="setOrderAddress" placeholder="线下办理地址" /><button size="mini" bindtap="assignAddress" data-index="{{index}}">保存地址</button></view>
     </view>
   </block>

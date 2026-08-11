@@ -172,6 +172,7 @@ function openRecord(id, category) {
       <div><dt>手机</dt><dd>${escapeHtml(record.phone)}</dd></div>
       <div><dt>学校</dt><dd>${escapeHtml(record.schoolName)}</dd></div>
       <div><dt>服务地址</dt><dd>${escapeHtml(record.address)}</dd></div>
+      ${isNumberOrder ? `<div><dt>收货人</dt><dd>${escapeHtml(record.shippingRecipient || record.name)}</dd></div><div><dt>联系号码</dt><dd>${escapeHtml(record.shippingPhone || record.phone)}</dd></div><div class="wide"><dt>收货地址</dt><dd>${escapeHtml(record.shippingAddress || record.address || '未填写')}</dd></div>` : ''}
       <div><dt>期望时间</dt><dd>${escapeHtml(record.appointment)}</dd></div>
       <div><dt>负责人</dt><dd>${escapeHtml(record.assignee || '待派单')}</dd></div>
       <div><dt>预约服务</dt><dd>${record.scheduledAt ? formatTime(record.scheduledAt) : '待确认'}</dd></div>

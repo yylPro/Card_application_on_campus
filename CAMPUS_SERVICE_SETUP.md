@@ -6,7 +6,7 @@
 
 1. 在 `miniprogram/app.js` 的 `globalData.env` 填入微信云开发环境 ID。
 2. 上传并部署 `cloudfunctions/quickstartFunctions` 云函数，部署时安装 `package.json` 中的依赖。
-3. 在云函数环境变量中设置 `CAMPUS_STAFF_KEY`。运营商端和线下实体端共用这个管理口令，不能把口令写进小程序代码或提交到仓库。
+3. 在云函数环境变量中设置 `CAMPUS_OPERATOR_KEY` 和 `CAMPUS_OUTLET_KEY` 两个不同的管理口令。运营商端和线下实体端按角色分别校验，不能把口令写进小程序代码或提交到仓库。为兼容旧部署，仍支持临时使用 `CAMPUS_STAFF_KEY`，但正式环境应删除该共享口令。
 4. 在云开发数据库中确认云函数具备创建和读写 `campus_numbers`、`campus_orders` 集合的权限。首次登录运营商端会自动尝试创建集合。
 5. 生产环境使用 HTTPS、最小权限的云环境，并根据运营商要求配置实名验证消息的安全传输和审计。
 

@@ -7,10 +7,10 @@ Page({
     schoolQuery: '',
     schools: [],
     services: [
-      { title: '新生选号预约', kind: 'order' },
-      { title: '校园网账号预约', kind: 'order' },
-      { title: '宽带故障报修', kind: 'ticket' },
-      { title: '续费与业务咨询', kind: 'ticket' }
+      { title: '新生选号预约', kind: 'order', open: true },
+      { title: '校园网账号预约', kind: 'order', open: false },
+      { title: '宽带故障报修', kind: 'ticket', open: false },
+      { title: '续费与业务咨询', kind: 'ticket', open: false }
     ]
   },
   onLoad(query) {
@@ -40,6 +40,8 @@ Page({
   openService(event) {
     if (!app.globalData.schoolCode) return wx.showToast({ title: '请先选择学校', icon: 'none' });
     const { title, kind } = event.currentTarget.dataset;
+    const service = this.data.services.find((item) => item.title === title);
+    if (!service?.open) return wx.showToast({ title: '未开放，敬请期待', icon: 'none' });
     wx.navigateTo({ url: `/pages/form/form?title=${encodeURIComponent(title)}&kind=${kind}` });
   },
   openRecords() { wx.navigateTo({ url: '/pages/records/records' }); }

@@ -74,6 +74,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .service-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
 .service-card { display: flex; align-items: center; gap: 12px; min-height: 96px; padding: 14px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink); text-align: left; }
 .service-card.featured { border-color: #add4ec; background: #f0f9fe; }
+.service-card.unavailable { background: #f7f9fa; color: #6f7d87; }
 .service-icon.teal { background: var(--teal); }
 .service-icon.coral { background: var(--coral); }
 .service-icon.violet { background: var(--violet); }

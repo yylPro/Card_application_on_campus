@@ -22,7 +22,7 @@
         <div>
           <p class="eyebrow" id="schoolEyebrow">校园专属服务</p>
           <h1>办校园通信服务，<br />扫码就能安排</h1>
-          <p class="hero-description">新生选号、校园网账号预约、宽带维修和业务咨询，都可以在这里提交。</p>
+          <p class="hero-description">当前开放新生在线选号，提交后由运营商安排后续实名激活。</p>
           <div class="service-hours"><span></span> 服务时间：08:30 - 20:30</div>
         </div>
         <div class="hero-visual" aria-hidden="true">
@@ -41,7 +41,7 @@
         </button>
         <button type="button" data-open="校园网账号预约" data-kind="order">
           <span class="action-icon">网</span>
-          <span><strong>预约开通</strong><small>校园网、宽带服务</small></span>
+          <span><strong>预约开通</strong><small>未开放，敬请期待</small></span>
         </button>
         <button type="button" id="lookupButton">
           <span class="action-icon">查</span>
@@ -63,19 +63,19 @@
             <span class="service-copy"><strong>选号预约</strong><small>线上提交需求，工作人员或配送人员线下实名激活</small></span>
             <span class="chevron">›</span>
           </button>
-          <button class="service-card" type="button" data-open="校园网账号预约" data-kind="order">
+          <button class="service-card unavailable" type="button" data-open="校园网账号预约" data-kind="order">
             <span class="service-icon teal">网</span>
-            <span class="service-copy"><strong>校园网账号预约</strong><small>预约账号开通、宽带办理和到宿舍服务</small></span>
+            <span class="service-copy"><strong>校园网账号预约</strong><small>未开放，敬请期待</small></span>
             <span class="chevron">›</span>
           </button>
-          <button class="service-card" type="button" data-open="宽带故障报修" data-kind="ticket">
+          <button class="service-card unavailable" type="button" data-open="宽带故障报修" data-kind="ticket">
             <span class="service-icon coral">修</span>
-            <span class="service-copy"><strong>宽带故障报修</strong><small>掉线、网速慢、设备异常等维护需求</small></span>
+            <span class="service-copy"><strong>宽带故障报修</strong><small>未开放，敬请期待</small></span>
             <span class="chevron">›</span>
           </button>
-          <button class="service-card" type="button" data-open="续费与业务咨询" data-kind="ticket">
+          <button class="service-card unavailable" type="button" data-open="续费与业务咨询" data-kind="ticket">
             <span class="service-icon violet">问</span>
-            <span class="service-copy"><strong>续费与业务咨询</strong><small>套餐、续费、迁移和账号使用问题</small></span>
+            <span class="service-copy"><strong>续费与业务咨询</strong><small>未开放，敬请期待</small></span>
             <span class="chevron">›</span>
           </button>
         </div>
@@ -129,7 +129,11 @@
             <label>意向号码<input type="hidden" name="selectedOfferId" id="selectedOfferId" required /><div class="number-summary"><strong id="selectedNumberSummary">尚未选择号码</strong><button type="button" class="outline-button" id="openNumberPickerButton">进入选号</button></div><small>提交后号码会立即预占；取消订单后号码才会回到号码池。</small></label>
           </div>
           <label>希望服务时间<select name="appointment"><option value="尽快联系">尽快联系</option><option value="上午 09:00 - 12:00">上午 09:00 - 12:00</option><option value="下午 14:00 - 18:00">下午 14:00 - 18:00</option><option value="晚上 18:00 - 20:30">晚上 18:00 - 20:30</option></select></label>
-          <label>需求说明<textarea name="detail" required placeholder="请描述具体需求，例如希望办理的套餐或故障情况"></textarea></label>
+          <div class="form-row">
+            <label>收货人<input name="shippingRecipient" autocomplete="name" maxlength="40" required placeholder="请输入收货人姓名" /></label>
+            <label>联系号码<input name="shippingPhone" inputmode="tel" autocomplete="tel" minlength="11" maxlength="11" pattern="1[0-9]{10}" required placeholder="请输入收货联系电话" /></label>
+          </div>
+          <label>收货地址<input name="shippingAddress" autocomplete="street-address" maxlength="160" required placeholder="请输入详细收货地址" /></label>
           <label class="consent"><input name="serviceConsent" type="checkbox" required /><span>我已阅读并同意将以上信息用于校园通信服务信息收集和后续联系。</span></label>
           <label class="consent marketing"><input name="marketingConsent" type="checkbox" /><span>我同意接收校园通信服务优惠信息（可不选）。</span></label>
           <div class="step-actions"><button type="button" class="outline-button" id="previousServiceStepButton">返回上一步</button><button class="primary-button submit-button" type="submit">提交预约</button></div>

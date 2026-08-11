@@ -176,16 +176,18 @@ const campusOk = (data) => ({ success: true, data });
 
 const campusOpenId = () => cloud.getWXContext().OPENID || "";
 
-const campusStaffKeyMatches = (value) => {
-  const configured = String(process.env.CAMPUS_STAFF_KEY || "");
+const campusStaffKeyMatches = (value, role = "operator") => {
+  const roleKey = role === "outlet" ? process.env.CAMPUS_OUTLET_KEY : process.env.CAMPUS_OPERATOR_KEY;
+  const configured = String(roleKey || process.env.CAMPUS_STAFF_KEY || "");
   const supplied = String(value || "");
   if (!configured || !supplied || configured.length !== supplied.length) return false;
   return crypto.timingSafeEqual(Buffer.from(configured), Buffer.from(supplied));
 };
 
-const campusRequireStaff = (event) => {
-  if (campusStaffKeyMatches(event.staffKey)) return null;
-  if (!process.env.CAMPUS_STAFF_KEY) return campusError("云函数未配置 CAMPUS_STAFF_KEY，请先配置运营商/线下端管理口令", "STAFF_KEY_NOT_CONFIGURED");
+const campusRequireStaff = (event, role = "operator") => {
+  if (campusStaffKeyMatches(event.staffKey, role)) return null;
+  const configured = role === "outlet" ? process.env.CAMPUS_OUTLET_KEY : process.env.CAMPUS_OPERATOR_KEY;
+  if (!configured && !process.env.CAMPUS_STAFF_KEY) return campusError(`云函数未配置 ${role === "outlet" ? "CAMPUS_OUTLET_KEY" : "CAMPUS_OPERATOR_KEY"}`, "STAFF_KEY_NOT_CONFIGURED");
   return campusError("管理口令不正确", "STAFF_UNAUTHORIZED");
 };
 
@@ -245,9 +247,13 @@ const campusReserveNumber = async (event) => {
   const name = campusText(event.name, 40);
   const studentNo = campusText(event.studentNo, 40);
   const phone = campusText(event.phone, 20);
+  const shippingRecipient = campusText(event.shippingRecipient, 40);
+  const shippingPhone = campusText(event.shippingPhone, 20);
+  const shippingAddress = campusText(event.shippingAddress, 160);
   const offerId = campusText(event.offerId, 80);
-  if (!openid || !name || !phone || !offerId) return campusError("请填写姓名、联系电话并选择号码", "INVALID_INPUT");
+  if (!openid || !name || !phone || !shippingRecipient || !shippingPhone || !shippingAddress || !offerId) return campusError("请完整填写身份、收货信息并选择号码", "INVALID_INPUT");
   if (!/^1\d{10}$/.test(phone)) return campusError("联系电话格式不正确", "INVALID_PHONE");
+  if (!/^1\d{10}$/.test(shippingPhone)) return campusError("收货联系号码格式不正确", "INVALID_SHIPPING_PHONE");
 
   await campusEnsureCollections();
   const offers = await campusRead("campus_numbers");
@@ -274,6 +280,9 @@ const campusReserveNumber = async (event) => {
         name,
         studentNo,
         phone,
+        shippingRecipient,
+        shippingPhone,
+        shippingAddress,
         numberId: offer._id,
         operator: offer.operator,
         displayNumber: offer.displayNumber || campusDisplayNumber(offer.phone),
@@ -316,6 +325,9 @@ const campusStudentOrders = async () => {
       name: item.name,
       studentNo: item.studentNo,
       phone: item.phone,
+      shippingRecipient: item.shippingRecipient || item.name,
+      shippingPhone: item.shippingPhone || item.phone,
+      shippingAddress: item.shippingAddress || "",
       operator: item.operator,
       displayNumber: item.displayNumber,
       planName: item.planName,
@@ -382,6 +394,9 @@ const campusListOrders = async (event) => {
       name: item.name,
       studentNo: item.studentNo,
       phone: item.phone,
+      shippingRecipient: item.shippingRecipient || item.name,
+      shippingPhone: item.shippingPhone || item.phone,
+      shippingAddress: item.shippingAddress || "",
       operator: item.operator,
       displayNumber: item.displayNumber,
       planName: item.planName,
@@ -408,7 +423,7 @@ const campusAssignOutlet = async (event) => {
 const campusNormalizeIdCard = (value) => campusText(value, 18).toUpperCase().replace(/\s+/g, "");
 
 const campusImportVerification = async (event) => {
-  const authError = campusRequireStaff(event);
+  const authError = campusRequireStaff(event, "outlet");
   if (authError) return authError;
   const messages = Array.isArray(event.messages) ? event.messages.slice(0, 200) : [];
   if (!messages.length) return campusError("没有可导入的实名验证消息", "INVALID_INPUT");
@@ -501,9 +516,9 @@ exports.main = async (event, context) => {
     case "campusStudentOrders":
       return await campusStudentOrders(event);
     case "campusStaffLogin":
-      if (!campusStaffKeyMatches(event.staffKey)) return campusRequireStaff(event);
+      if (!campusStaffKeyMatches(event.staffKey, event.role)) return campusRequireStaff(event, event.role);
       await campusEnsureCollections();
-      return campusOk({ role: "staff" });
+      return campusOk({ role: event.role === "outlet" ? "outlet" : "operator" });
     case "campusImportNumbers":
       return await campusImportNumbers(event);
     case "campusListOrders":

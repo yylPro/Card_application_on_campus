@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test test/service.test.js"
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "mssql": "^12.7.0",
