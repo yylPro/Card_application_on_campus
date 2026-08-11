@@ -216,6 +216,8 @@ test('二维码、分流、H5 与小程序入口契约可用', async () => {
   assert.equal(fixtures.body.school.code, 'TEST-2026');
   assert.equal(fixtures.body.students.length, 3);
   assert.equal(fixtures.body.availableOffers.length, 12);
+  const developmentSchools = await request(`/api/schools?q=${encodeURIComponent('校园通信')}`);
+  assert.ok(developmentSchools.body.schools.some((item) => item.code === 'TEST-2026'));
 });
 
 test('运营商未授权手机号不能登录或注册', async () => {

@@ -1030,7 +1030,7 @@ async function api(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/schools') {
     const query = safe(url.searchParams.get('q'), 60).toLowerCase();
-    const schools = db.schools.filter((item) => item.code !== TEST_SCHOOL_CODE && item.status === 'active' && (!query || item.name.toLowerCase().includes(query) || item.code.toLowerCase().includes(query))).slice(0, 20).map(publicSchool);
+    const schools = db.schools.filter((item) => (!IS_PRODUCTION || item.code !== TEST_SCHOOL_CODE) && item.status === 'active' && (!query || item.name.toLowerCase().includes(query) || item.code.toLowerCase().includes(query))).slice(0, 20).map(publicSchool);
     return json(res, 200, { schools });
   }
 

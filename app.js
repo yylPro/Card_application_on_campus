@@ -123,34 +123,6 @@ function imageDataUrl(file) {
 
 async function loadNumberOffers() {
   const tabs = document.getElementById('operatorTabs');
-  const list = document.getElementById('numberPickerList');
-  const selectedInput = document.getElementById('selectedOfferId');
-  list.innerHTML = '<p class="empty-state">正在加载可选号码...</p>';
-  try {
-    const response = await fetch(`/api/schools/${encodeURIComponent(schoolCode)}/numbers`);
-    const payload = await readJson(response, '号码资源加载失败，请稍后重试');
-    if (!response.ok) throw new Error(payload.error || '号码资源暂不可用');
-    const groups = payload.offers.reduce((result, offer) => { (result[offer.operator] ||= []).push(offer); return result; }, {});
-    const operators = Object.keys(groups);
-    let activeOperator = operators[0] || '';
-    const render = () => {
-      tabs.innerHTML = operators.map((operator) => `<button type="button" class="operator-tab ${operator === activeOperator ? 'active' : ''}" data-operator="${operator}">${operator}<small>${groups[operator].length} 个号码</small></button>`).join('');
-      const offers = groups[activeOperator] || [];
-      list.innerHTML = offers.length ? offers.map((offer) => `<button type="button" class="number-option ${selectedInput.value === offer.id ? 'selected' : ''}" data-offer-id="${offer.id}"><strong>${offer.displayNumber}</strong><span>${offer.planName} · ${offer.monthlyFee} 元/月</span></button>`).join('') : '<p class="empty-state">该运营商暂无可选号码</p>';
-    };
-    tabs.onclick = (event) => { const button = event.target.closest('[data-operator]'); if (button) { activeOperator = button.dataset.operator; render(); } };
-    list.onclick = (event) => { const button = event.target.closest('[data-offer-id]'); if (!button) return; selectedInput.value = button.dataset.offerId; list.querySelectorAll('.number-option').forEach((item) => item.classList.toggle('selected', item === button)); };
-    render();
-    if (!payload.offers.length) list.innerHTML = '<p class="empty-state">当前没有可选号码</p>';
-  } catch (error) {
-    tabs.replaceChildren();
-    list.innerHTML = '<p class="empty-state">号码加载失败，请稍后重试</p>';
-    showToast(userError(error), true);
-  }
-}
-
-async function loadNumberOffers() {
-  const tabs = document.getElementById('operatorTabs');
   const search = document.getElementById('numberSearch');
   const list = document.getElementById('numberPickerList');
   const pagination = document.getElementById('numberPagination');
@@ -303,6 +275,12 @@ async function loadSchool() {
     const payload = await readJson(response, '学校入口加载失败，请重新扫描二维码');
     if (!response.ok) throw new Error(payload.error || '学校二维码无效或已停用');
     school = payload.school;
+    selectedSchoolCode.value = school.code;
+    schoolSearch.value = school.name;
+    const colleges = school.colleges || [];
+    collegeSelect.innerHTML = colleges.map((college) => `<option value="${college}">${college}</option>`).join('') + '<option value="其他">其他学院</option>';
+    collegeCustom.hidden = colleges.length > 0;
+    collegeCustom.required = false;
     document.title = `${school.name} · 校园通信服务`;
     document.getElementById('schoolBadge').textContent = `${school.name}专属服务`;
     document.getElementById('schoolEyebrow').textContent = `${school.name}专属服务`;

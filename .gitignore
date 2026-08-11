@@ -7,4 +7,5 @@ data/id-images/
 data/*.json
 *.key
 campus-*.xlsx
+intranet-*-qr.png
 npm-debug.log*
