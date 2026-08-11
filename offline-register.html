@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>线下实体端注册 · 校园通信服务</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="login-page">
+    <main class="login-shell">
+      <section class="login-panel">
+        <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>校园通信服务</span></a>
+        <div class="login-copy"><p class="eyebrow">线下实体端</p><h1>注册实名核验账号</h1><p>仅预先列入授权白名单的工作人员手机号可以注册。</p></div>
+        <form id="offlineRegisterForm">
+          <label>授权手机号<input name="phone" type="tel" inputmode="numeric" autocomplete="username" maxlength="11" pattern="1[0-9]{10}" required placeholder="请输入已授权手机号" /></label>
+          <label>设置密码<input name="password" type="password" autocomplete="new-password" minlength="9" maxlength="15" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])[A-Za-z0-9]{9,15}" required placeholder="9-15位，含大小写字母和数字" /></label>
+          <label>确认密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="9" maxlength="15" required placeholder="请再次输入密码" /></label>
+          <button class="primary-button" type="submit">注册并进入实体端</button>
+        </form>
+        <p class="login-hint">已有账号？<a href="/offline/login">返回登录</a></p>
+      </section>
+    </main>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="/offline-register.js"></script>
+  </body>
+</html>

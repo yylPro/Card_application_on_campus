@@ -10,7 +10,13 @@ if (registering) {
   document.getElementById('switchHint').innerHTML = '已有账户？<a href="/student/login">直接登录</a>';
 }
 function show(message, error = false) { toast.textContent = message; toast.classList.toggle('error', error); toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3200); }
-fetch('/api/student/session').then((r) => r.json()).then((data) => { if (data.authenticated) location.replace('/service'); }).catch(() => {});
+fetch('/api/student/session').then((r) => r.json()).then((data) => {
+  if (data.authenticated) location.replace('/service');
+  if (!data.registrationEnabled) {
+    if (registering) location.replace('/student/login');
+    else document.getElementById('switchHint')?.remove();
+  }
+}).catch(() => {});
 form.addEventListener('submit', async (event) => {
   event.preventDefault(); const button = document.getElementById('submitButton'); button.disabled = true;
   try { const response = await fetch(registering ? '/api/student/register' : '/api/student/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(form))) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || '操作失败，请稍后重试'); location.replace('/service'); }

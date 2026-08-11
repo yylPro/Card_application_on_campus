@@ -129,11 +129,16 @@ function renderRecords() {
 
 function renderNumberOffers(offers) {
   const target = document.getElementById('numberOfferList');
-  target.innerHTML = offers.map((offer) => `<article class="number-offer"><div><strong>${escapeHtml(offer.displayNumber)}</strong><small>${escapeHtml(offer.operator || '未指定运营商')} · ${escapeHtml(offer.planName)} · ${escapeHtml(offer.schoolCode)}</small></div><div><strong>${escapeHtml(String(offer.monthlyFee))} 元/月</strong><span class="status-chip ${offer.status === 'available' ? 'completed' : 'pending'}">${offer.status === 'available' ? '可选' : '已预占'}</span></div></article>`).join('') || '<p class="empty-state">暂无号码资源。</p>';
+  target.innerHTML = offers.map((offer) => `<article class="number-offer"><div><strong>${escapeHtml(offer.displayNumber)}</strong><small>${escapeHtml(offer.operator || '未指定运营商')} · ${escapeHtml(offer.planName)} · ${escapeHtml(offer.schoolCode)}</small></div><div><strong>${escapeHtml(String(offer.monthlyFee))} 元/月</strong><span class="status-chip ${offer.status === 'available' || offer.status === 'activated' ? 'completed' : 'pending'}">${offer.status === 'available' ? '可选' : offer.status === 'activated' ? '已激活' : '已预占'}</span></div></article>`).join('') || '<p class="empty-state">暂无号码资源。</p>';
 }
 
 function renderOverview(data) {
   overview = data;
+  const offlineAddress = data.offlineSettings?.verificationAddress || '';
+  document.getElementById('offlineSettingsForm').elements.verificationAddress.value = offlineAddress;
+  document.getElementById('offlineSettingsMeta').textContent = offlineAddress
+    ? `当前全部选号订单使用此地址${data.offlineSettings.updatedAt ? ` · 更新于 ${formatTime(data.offlineSettings.updatedAt)}` : ''}`
+    : '尚未设置线下实名认证地址';
   document.getElementById('metricScans').textContent = data.metrics.scans;
   document.getElementById('metricOrders').textContent = data.metrics.orders;
   document.getElementById('metricTickets').textContent = data.metrics.tickets;
@@ -181,6 +186,8 @@ function openRecord(id, category) {
       <div class="wide"><dt>处理结果</dt><dd>${escapeHtml(record.serviceResult || '待处理')}</dd></div>
       <div class="wide"><dt>学生确认</dt><dd>${record.completionConfirmedAt ? `${formatTime(record.completionConfirmedAt)} · ${record.rating} 星${record.ratingComment ? ` · ${escapeHtml(record.ratingComment)}` : ''}` : '尚未确认'}</dd></div>
       ${isNumberOrder ? `<div><dt>意向号码</dt><dd>${escapeHtml(record.selectedNumber || '待工作人员推荐')}</dd></div><div><dt>交付方式</dt><dd>${escapeHtml(record.fulfillmentMethod || '待确认')}</dd></div>` : ''}
+      ${isNumberOrder ? `<div><dt>线下实名地址</dt><dd>${escapeHtml(record.offlineLocation || '尚未分配')}</dd></div><div><dt>学生特征码</dt><dd>${escapeHtml(record.offlineFeatureCode || '保存线下地址后生成')}</dd></div>` : ''}
+      ${isNumberOrder ? `<div><dt>实名状态</dt><dd>${labelFrom(verificationOptions, record.verificationStatus)}</dd></div><div><dt>选号号码状态</dt><dd>${record.activationStatus === 'activated' ? '已激活' : record.activationStatus === 'failed' ? '激活异常' : '待线下激活'}</dd></div>` : ''}
       ${isNumberOrder ? `<div><dt>配送信息</dt><dd>${escapeHtml(record.deliveryCarrier || '待交接')} ${escapeHtml(record.deliveryTrackingNo || '')}</dd></div><div><dt>补贴</dt><dd>${escapeHtml(record.subsidyStatus || 'not_applicable')} ${record.subsidyAmount ? `${record.subsidyAmount} 元` : ''}</dd></div>` : ''}
     </dl>
   `;
@@ -189,9 +196,11 @@ function openRecord(id, category) {
   form.elements.category.value = category;
   form.elements.status.innerHTML = optionMarkup(statusOptions, record.status);
   form.elements.verificationStatus.innerHTML = optionMarkup(verificationOptions, record.verificationStatus);
+  form.elements.verificationStatus.disabled = isNumberOrder;
   form.querySelectorAll('.order-only').forEach((element) => { element.hidden = !isNumberOrder; });
   form.elements.deliveryStatus.value = record.deliveryStatus || 'not_applicable';
   form.elements.activationStatus.value = record.activationStatus || 'not_applicable';
+  form.elements.activationStatus.disabled = isNumberOrder;
   form.elements.subsidyStatus.value = record.subsidyStatus || 'not_applicable';
   form.elements.subsidyAmount.value = record.subsidyAmount || '';
   form.elements.assignee.value = record.assignee || '';
@@ -217,6 +226,25 @@ document.getElementById('logoutButton').addEventListener('click', async () => {
 });
 document.getElementById('exportButton').addEventListener('click', () => { location.assign('/api/admin/export.xlsx'); });
 document.getElementById('exportPendingButton')?.addEventListener('click', () => { location.assign('/api/admin/export-pending.xlsx'); });
+document.getElementById('exportActivatedButton')?.addEventListener('click', () => { location.assign('/api/admin/export-activated.xlsx'); });
+document.getElementById('offlineSettingsForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('[type="submit"]');
+  button.disabled = true;
+  try {
+    const result = await api('/api/admin/offline-settings', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verificationAddress: form.elements.verificationAddress.value.trim() })
+    });
+    showToast(`全局线下地址已保存，已同步 ${result.affectedOrders} 个待激活选号订单`);
+    await loadOverview();
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
 document.getElementById('refreshButton')?.addEventListener('click', async (event) => {
   event.currentTarget.disabled = true;
   try { await loadOverview(); showToast('已同步最新共享数据'); }

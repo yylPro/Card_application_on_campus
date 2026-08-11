@@ -24,7 +24,10 @@ function showToast(message, isError = false) {
 
 fetch('/api/auth/session')
   .then((response) => response.json())
-  .then((session) => { if (session.authenticated) location.replace('/admin'); })
+  .then((session) => {
+    if (session.authenticated) location.replace('/admin');
+    if (!session.registrationEnabled) document.querySelector('.login-hint')?.remove();
+  })
   .catch(() => {});
 
 form.addEventListener('submit', async (event) => {

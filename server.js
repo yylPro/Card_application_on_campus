@@ -37,6 +37,8 @@ let runtimeDb = null;
 let dbSaveQueue = Promise.resolve();
 const PORT = Number(process.env.PORT || 4173);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const TRUST_PROXY = String(process.env.TRUST_PROXY || '').toLowerCase() === 'true';
+const PUBLIC_REGISTRATION_ENABLED = !IS_PRODUCTION || String(process.env.ENABLE_PUBLIC_REGISTRATION || '').toLowerCase() === 'true';
 const HTTPS_ENABLED = String(process.env.HTTPS || '').toLowerCase() === 'true';
 const TLS_KEY_FILE = process.env.TLS_KEY_FILE ? path.resolve(ROOT, process.env.TLS_KEY_FILE) : '';
 const TLS_CERT_FILE = process.env.TLS_CERT_FILE ? path.resolve(ROOT, process.env.TLS_CERT_FILE) : '';
@@ -44,11 +46,30 @@ const TLS_PFX_FILE = process.env.TLS_PFX_FILE ? path.resolve(ROOT, process.env.T
 const TLS_PFX_PASSWORD = process.env.TLS_PFX_PASSWORD || '';
 const ADMIN_USER = process.env.ADMIN_USER || 'operator';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'CampusAdmin2026';
-const BUILTIN_ADMIN_PHONE_HASHES = [
+const ACTIVATION_EXPORT_KEY_RAW = process.env.ACTIVATION_EXPORT_KEY || '';
+const ACTIVATION_EXPORT_KEY_BUFFER = ACTIVATION_EXPORT_KEY_RAW ? Buffer.from(ACTIVATION_EXPORT_KEY_RAW, 'base64') : null;
+if (ACTIVATION_EXPORT_KEY_RAW && (!/^[A-Za-z0-9+/]+={0,2}$/.test(ACTIVATION_EXPORT_KEY_RAW) || ACTIVATION_EXPORT_KEY_BUFFER.length !== 32)) {
+  throw new Error('ACTIVATION_EXPORT_KEY 必须是 32 字节密钥的 Base64 编码');
+}
+if (IS_PRODUCTION && !ACTIVATION_EXPORT_KEY_RAW) throw new Error('生产环境必须配置 ACTIVATION_EXPORT_KEY');
+const ACTIVATION_EXPORT_KEY = ACTIVATION_EXPORT_KEY_BUFFER || crypto.createHash('sha256').update(`development-activation-export:${ADMIN_PASSWORD}`).digest();
+const ID_IMAGE_ENCRYPTION_KEY_RAW = process.env.ID_IMAGE_ENCRYPTION_KEY || '';
+const ID_IMAGE_ENCRYPTION_KEY_BUFFER = ID_IMAGE_ENCRYPTION_KEY_RAW ? Buffer.from(ID_IMAGE_ENCRYPTION_KEY_RAW, 'base64') : null;
+if (ID_IMAGE_ENCRYPTION_KEY_RAW && (!/^[A-Za-z0-9+/]+={0,2}$/.test(ID_IMAGE_ENCRYPTION_KEY_RAW) || ID_IMAGE_ENCRYPTION_KEY_BUFFER.length !== 32)) {
+  throw new Error('ID_IMAGE_ENCRYPTION_KEY 必须是 32 字节密钥的 Base64 编码');
+}
+if (IS_PRODUCTION && !ID_IMAGE_ENCRYPTION_KEY_RAW) throw new Error('生产环境必须配置 ID_IMAGE_ENCRYPTION_KEY');
+const ID_IMAGE_ENCRYPTION_KEY = ID_IMAGE_ENCRYPTION_KEY_BUFFER || crypto.createHash('sha256').update(`development-id-images:${ADMIN_PASSWORD}`).digest();
+if (IS_PRODUCTION && DB_DRIVER === 'json') throw new Error('生产环境禁止使用 JSON 存储，请配置 SQL Server 或 MySQL');
+const BUILTIN_ADMIN_PHONE_HASHES = IS_PRODUCTION ? [] : [
   'e842f8731cb1f25ff74243c3e5f5952f99cede75e1978917bce90f74868ad1c3',
   '857700790201de0c5d715e934b88b8fc2fcd120ffbddaf2a30798b0fa2c4c051'
 ];
 const ADMIN_PHONE_HASHES = new Set([...BUILTIN_ADMIN_PHONE_HASHES, ...(process.env.ADMIN_AUTHORIZED_PHONE_HASHES || '').split(',')].map((value) => value.trim()).filter(Boolean));
+const BUILTIN_OFFLINE_PHONE_HASHES = IS_PRODUCTION ? [] : [
+  '0f895527cf65770e626f1451314419cdf6709fbac93d4e436958b630fe4a9cdf'
+];
+const OFFLINE_PHONE_HASHES = new Set([...BUILTIN_OFFLINE_PHONE_HASHES, ...(process.env.OFFLINE_AUTHORIZED_PHONE_HASHES || '').split(',')].map((value) => value.trim()).filter(Boolean));
 const WECHAT_OFFICIAL_APP_ID = process.env.WECHAT_OFFICIAL_APP_ID || '';
 const WECHAT_OFFICIAL_APP_SECRET = process.env.WECHAT_OFFICIAL_APP_SECRET || '';
 const WECHAT_MINIPROGRAM_APP_ID = process.env.WECHAT_MINIPROGRAM_APP_ID || '';
@@ -81,6 +102,7 @@ const TEST_FIXTURES = [
 ];
 const sessions = new Map();
 const queryCodes = new Map();
+const offlineMatches = new Map();
 const authAttempts = new Map();
 let mutationQueue = Promise.resolve();
 let wechatTicketCache = { value: '', expiresAt: 0 };
@@ -100,6 +122,7 @@ const statusTransitions = {
 };
 
 const initialDb = {
+  settings: { offlineVerificationAddress: '', offlineVerificationAddressUpdatedAt: '' },
   schools: [{
     code: 'XXU-2026',
     name: 'XX大学',
@@ -120,8 +143,11 @@ const initialDb = {
   orders: [],
   tickets: [],
   vouchers: [],
+  offlineVerifications: [],
+  activatedArchives: [],
   studentAccounts: [],
   adminAccounts: [],
+  offlineAccounts: [],
   numberOffers: [
     { id: 'XXU-1382026', schoolCode: 'XXU-2026', displayNumber: '138****2026', planName: '校园畅享套餐', monthlyFee: 39, status: 'available', reservedBy: '' },
     { id: 'XXU-1391688', schoolCode: 'XXU-2026', displayNumber: '139****1688', planName: '校园畅享套餐', monthlyFee: 39, status: 'available', reservedBy: '' },
@@ -141,12 +167,18 @@ function ensureDb() {
 }
 
 function normalizeDb(db) {
+  db.settings = db.settings && typeof db.settings === 'object' ? db.settings : {};
+  if (!db.settings.offlineVerificationAddress) db.settings.offlineVerificationAddress = '';
+  if (!db.settings.offlineVerificationAddressUpdatedAt) db.settings.offlineVerificationAddressUpdatedAt = '';
   db.schools = Array.isArray(db.schools) ? db.schools : [];
   db.orders = Array.isArray(db.orders) ? db.orders : [];
   db.tickets = Array.isArray(db.tickets) ? db.tickets : [];
   db.vouchers = Array.isArray(db.vouchers) ? db.vouchers : [];
+  db.offlineVerifications = Array.isArray(db.offlineVerifications) ? db.offlineVerifications.slice(-5000) : [];
+  db.activatedArchives = Array.isArray(db.activatedArchives) ? db.activatedArchives : [];
   db.studentAccounts = Array.isArray(db.studentAccounts) ? db.studentAccounts : [];
   db.adminAccounts = Array.isArray(db.adminAccounts) ? db.adminAccounts : [];
+  db.offlineAccounts = Array.isArray(db.offlineAccounts) ? db.offlineAccounts : [];
   db.numberOffers = Array.isArray(db.numberOffers) ? db.numberOffers : [];
   if (!IS_PRODUCTION) {
     const retiredTestOfferIds = new Set(['TEST-1380001', 'TEST-1380002', 'TEST-1380003']);
@@ -199,6 +231,11 @@ function normalizeDb(db) {
     if (!Number.isInteger(record.rating) || record.rating < 1 || record.rating > 5) record.rating = 0;
     if (!record.ratingComment) record.ratingComment = '';
     if (!record.completionConfirmedAt) record.completionConfirmedAt = '';
+    if (!record.offlineLocation) record.offlineLocation = '';
+    if (!record.offlineFeatureCode) record.offlineFeatureCode = '';
+    if (!record.offlineAssignedAt) record.offlineAssignedAt = '';
+    if (!record.offlineVerifiedAt) record.offlineVerifiedAt = '';
+    if (!record.offlineVerificationReference) record.offlineVerificationReference = '';
   });
   db.vouchers = db.vouchers.filter((voucher) => voucher && voucher.id && voucher.recordId && voucher.token);
   db.vouchers.forEach((voucher) => {
@@ -278,7 +315,8 @@ function runMutation(task) {
 }
 
 function clientIp(req) {
-  return String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
+  const source = TRUST_PROXY ? req.headers['x-forwarded-for'] : '';
+  return String(source || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
 }
 
 function rateLimit(map, key, maxAttempts, windowMs) {
@@ -324,7 +362,29 @@ function hashPhone(phone) {
 }
 
 function validIdCard(value) {
-  return /^(\d{17}[\dXx])$/.test(value);
+  const normalized = String(value || '').toUpperCase();
+  if (!/^\d{17}[\dX]$/.test(normalized)) return false;
+  const provinceCodes = new Set([
+    '11', '12', '13', '14', '15', '21', '22', '23', '31', '32', '33', '34', '35', '36', '37',
+    '41', '42', '43', '44', '45', '46', '50', '51', '52', '53', '54', '61', '62', '63', '64', '65',
+    '71', '81', '82'
+  ]);
+  if (!provinceCodes.has(normalized.slice(0, 2)) || normalized.slice(14, 17) === '000') return false;
+
+  const year = Number(normalized.slice(6, 10));
+  const month = Number(normalized.slice(10, 12));
+  const day = Number(normalized.slice(12, 14));
+  const birthDate = new Date(Date.UTC(year, month - 1, day));
+  if (birthDate.getUTCFullYear() !== year || birthDate.getUTCMonth() !== month - 1 || birthDate.getUTCDate() !== day) return false;
+  const now = new Date();
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const earliest = Date.UTC(now.getUTCFullYear() - 120, now.getUTCMonth(), now.getUTCDate());
+  if (birthDate.getTime() > today || birthDate.getTime() < earliest) return false;
+
+  const weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
+  const checkCodes = ['1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2'];
+  const sum = weights.reduce((total, weight, index) => total + Number(normalized[index]) * weight, 0);
+  return normalized[17] === checkCodes[sum % 11];
 }
 
 function maskPhoneNumber(value) {
@@ -333,14 +393,73 @@ function maskPhoneNumber(value) {
   return normalized;
 }
 
-function saveIdImage(value, recordId, side) {
+function pngDimensions(buffer) {
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (buffer.length < 45 || !buffer.subarray(0, 8).equals(signature)) return null;
+  let offset = 8;
+  let dimensions = null;
+  let hasImageData = false;
+  while (offset + 12 <= buffer.length) {
+    const length = buffer.readUInt32BE(offset);
+    const end = offset + 12 + length;
+    if (end > buffer.length) return null;
+    const type = buffer.subarray(offset + 4, offset + 8).toString('ascii');
+    if (!dimensions && type !== 'IHDR') return null;
+    if (type === 'IHDR') {
+      if (dimensions || length !== 13) return null;
+      dimensions = { width: buffer.readUInt32BE(offset + 8), height: buffer.readUInt32BE(offset + 12) };
+    }
+    if (type === 'IDAT' && length > 0) hasImageData = true;
+    if (type === 'IEND') return length === 0 && end === buffer.length && dimensions && hasImageData ? dimensions : null;
+    offset = end;
+  }
+  return null;
+}
+
+function jpegDimensions(buffer) {
+  if (buffer.length < 11 || buffer[0] !== 0xff || buffer[1] !== 0xd8 || buffer.at(-2) !== 0xff || buffer.at(-1) !== 0xd9) return null;
+  const startOfFrameMarkers = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+  let offset = 2;
+  while (offset + 4 <= buffer.length) {
+    while (buffer[offset] === 0xff) offset += 1;
+    const marker = buffer[offset];
+    offset += 1;
+    if (marker === 0xd9 || marker === 0xda || offset + 2 > buffer.length) break;
+    const length = buffer.readUInt16BE(offset);
+    if (length < 2 || offset + length > buffer.length) return null;
+    if (startOfFrameMarkers.has(marker)) {
+      if (length < 7) return null;
+      return { width: buffer.readUInt16BE(offset + 5), height: buffer.readUInt16BE(offset + 3) };
+    }
+    offset += length;
+  }
+  return null;
+}
+
+function parseIdImage(value) {
   const match = /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/.exec(String(value || ''));
   if (!match) throw new Error('身份证图片仅支持 JPG 或 PNG 格式');
   const buffer = Buffer.from(match[2], 'base64');
   if (!buffer.length || buffer.length > 2 * 1024 * 1024) throw new Error('单张身份证图片不能超过 2MB');
-  const extension = match[1] === 'image/png' ? 'png' : 'jpg';
-  const filename = `${recordId}-${side}.${extension}`;
-  fs.writeFileSync(path.join(UPLOAD_DIR, filename), buffer);
+  const detectedMime = buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    ? 'image/png'
+    : buffer[0] === 0xff && buffer[1] === 0xd8 ? 'image/jpeg' : '';
+  if (!detectedMime || detectedMime !== match[1]) throw new Error('身份证图片内容与文件格式不一致');
+  const dimensions = detectedMime === 'image/png' ? pngDimensions(buffer) : jpegDimensions(buffer);
+  if (!dimensions) throw new Error('身份证图片文件已损坏或无法识别');
+  if (dimensions.width < 300 || dimensions.height < 180) throw new Error('身份证图片尺寸不能小于 300×180 像素');
+  return { buffer, mime: detectedMime };
+}
+
+function saveIdImage(image, recordId, side) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ID_IMAGE_ENCRYPTION_KEY, iv);
+  cipher.setAAD(Buffer.from(`id-image:v1:${recordId}:${side}`));
+  const ciphertext = Buffer.concat([cipher.update(image.buffer), cipher.final()]);
+  const mimeByte = image.mime === 'image/png' ? 1 : 2;
+  const encryptedFile = Buffer.concat([Buffer.from('CIMG1'), Buffer.from([mimeByte]), iv, cipher.getAuthTag(), ciphertext]);
+  const filename = `${recordId}-${side}.enc`;
+  fs.writeFileSync(path.join(UPLOAD_DIR, filename), encryptedFile, { mode: 0o600 });
   return filename;
 }
 
@@ -405,12 +524,21 @@ function createSession(user, role) {
 }
 
 function sessionCookie(token, maxAge, role) {
-  const name = role === 'student' ? 'campus_student_session' : 'campus_admin_session';
+  const name = role === 'student'
+    ? 'campus_student_session'
+    : role === 'offline'
+      ? 'campus_offline_session'
+      : 'campus_admin_session';
   return `${name}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${HTTPS_ENABLED || IS_PRODUCTION ? '; Secure' : ''}`;
 }
 
 function sessionFor(req, role = 'admin') {
-  const token = parseCookies(req)[role === 'student' ? 'campus_student_session' : 'campus_admin_session'];
+  const cookieName = role === 'student'
+    ? 'campus_student_session'
+    : role === 'offline'
+      ? 'campus_offline_session'
+      : 'campus_admin_session';
+  const token = parseCookies(req)[cookieName];
   if (!token) return null;
   const session = sessions.get(token);
   if (!session || session.role !== role || session.expiresAt <= Date.now()) {
@@ -438,10 +566,107 @@ function requireStudent(req, res) {
   return session;
 }
 
+function requireOffline(req, res) {
+  const session = sessionFor(req, 'offline');
+  if (!session) {
+    json(res, 401, { error: '请先登录线下实体端' });
+    return null;
+  }
+  return session;
+}
+
+function featureCode() {
+  return crypto.randomBytes(6).toString('base64url').toUpperCase();
+}
+
+function uniqueFeatureCode(db) {
+  let code;
+  do { code = featureCode(); } while (db.orders.some((item) => item.offlineFeatureCode === code));
+  return code;
+}
+
+function sameIdCard(first, second) {
+  const left = Buffer.from(String(first || '').toUpperCase());
+  const right = Buffer.from(String(second || '').toUpperCase());
+  return left.length === right.length && left.length > 0 && crypto.timingSafeEqual(left, right);
+}
+
+function activationExportPayload(record) {
+  return {
+    schoolName: record.schoolName,
+    college: record.college,
+    name: record.name,
+    idCard: record.idCard,
+    selectedNumber: record.selectedNumber,
+    phone: record.phone,
+    backupPhone: record.backupPhone || '',
+    activationStatus: record.activationStatus,
+    activatedAt: record.offlineVerifiedAt || record.updatedAt
+  };
+}
+
+function archiveActivatedRecord(db, record) {
+  if (db.activatedArchives.some((item) => item.recordId === record.id)) return;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ACTIVATION_EXPORT_KEY, iv);
+  cipher.setAAD(Buffer.from(`activation-export:v1:${record.id}`));
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(activationExportPayload(record)), 'utf8'), cipher.final()]);
+  db.activatedArchives.push({
+    id: id('ARC'),
+    recordId: record.id,
+    version: 1,
+    algorithm: 'aes-256-gcm',
+    iv: iv.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64'),
+    ciphertext: encrypted.toString('base64'),
+    createdAt: new Date().toISOString()
+  });
+}
+
+function decryptActivatedArchive(archive) {
+  if (archive.version !== 1 || archive.algorithm !== 'aes-256-gcm') throw new Error('已激活名单包含不支持的加密版本');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', ACTIVATION_EXPORT_KEY, Buffer.from(archive.iv, 'base64'));
+  decipher.setAAD(Buffer.from(`activation-export:v1:${archive.recordId}`));
+  decipher.setAuthTag(Buffer.from(archive.tag, 'base64'));
+  const decrypted = Buffer.concat([decipher.update(Buffer.from(archive.ciphertext, 'base64')), decipher.final()]);
+  return JSON.parse(decrypted.toString('utf8'));
+}
+
+function matchOfflineRecord(db, code, idCard) {
+  const normalizedCode = safe(code, 40).toUpperCase();
+  const normalizedIdCard = safe(idCard, 18).toUpperCase();
+  const record = db.orders.find((item) => item.offlineFeatureCode === normalizedCode && item.selectedOfferId);
+  const offer = record ? db.numberOffers.find((item) => item.id === record.selectedOfferId && item.reservedBy === record.id) : null;
+  if (!normalizedCode || !validIdCard(normalizedIdCard) || !record || !offer || record.status === 'cancelled' || record.activationStatus === 'activated' || !sameIdCard(record.idCard, normalizedIdCard)) return null;
+  return { record, offer, normalizedCode, normalizedIdCard };
+}
+
+function activateOfflineRecord(db, { code, idCard, reference, worker }) {
+  const match = matchOfflineRecord(db, code, idCard);
+  if (!match) return null;
+  const { record, offer, normalizedCode } = match;
+  record.verificationStatus = 'verified';
+  record.activationStatus = 'activated';
+  record.offlineVerifiedAt = new Date().toISOString();
+  record.offlineVerificationReference = safe(reference, 200);
+  record.serviceResult = record.offlineVerificationReference ? `线下实体实名核验通过：${record.offlineVerificationReference}` : '线下实体实名核验通过，号码已激活';
+  record.updatedAt = record.offlineVerifiedAt;
+  offer.status = 'activated';
+  if (record.status !== 'completed') {
+    record.status = 'completed';
+    record.statusHistory.push({ status: 'completed', at: record.updatedAt, by: `offline:${worker}` });
+  }
+  db.offlineVerifications.push({ id: id('OFF'), recordId: record.id, featureCode: normalizedCode, workerPhoneHash: hashPhone(worker), reference: record.offlineVerificationReference, verifiedAt: record.offlineVerifiedAt });
+  archiveActivatedRecord(db, record);
+  audit(db, 'offline.verification.registered', worker, record.id, { featureCode: normalizedCode, reference: record.offlineVerificationReference });
+  return record;
+}
+
 function clearExpiredMemory() {
   const now = Date.now();
   for (const [token, session] of sessions) if (session.expiresAt <= now) sessions.delete(token);
   for (const [key, code] of queryCodes) if (code.expiresAt <= now) queryCodes.delete(key);
+  for (const [token, match] of offlineMatches) if (match.expiresAt <= now) offlineMatches.delete(token);
 }
 
 function otpKey(purpose, schoolCode, phone) {
@@ -677,6 +902,7 @@ async function api(req, res, url) {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/auth/register') {
+    if (!PUBLIC_REGISTRATION_ENABLED) return json(res, 403, { error: '公网环境已关闭自助注册，请联系管理员预先创建测试账号' });
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
     const phone = safe(body.phone, 20);
@@ -702,7 +928,53 @@ async function api(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/auth/session') {
     const session = sessionFor(req, 'admin');
-    return json(res, 200, { authenticated: Boolean(session), user: session?.user || null });
+    return json(res, 200, { authenticated: Boolean(session), user: session?.user || null, registrationEnabled: PUBLIC_REGISTRATION_ENABLED });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/offline/login') {
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const phone = safe(body.phone, 20);
+    const password = String(body.password || '');
+    if (!rateLimit(authAttempts, `offline-login:${clientIp(req)}`, 8, 15 * 60 * 1000)) {
+      return json(res, 429, { error: '登录尝试次数过多，请 15 分钟后再试' });
+    }
+    const account = db.offlineAccounts.find((item) => item.phoneHash === hashPhone(phone) && item.status !== 'disabled');
+    if (!validPhone(phone) || !OFFLINE_PHONE_HASHES.has(hashPhone(phone)) || !account || !verifyPassword(password, account.passwordHash)) {
+      return json(res, 401, { error: '账号或密码错误' });
+    }
+    const token = createSession(phone, 'offline');
+    audit(db, 'offline.login', phone, 'offline-portal', { ip: clientIp(req) });
+    writeDb(db);
+    return json(res, 200, { phone }, { 'Set-Cookie': sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000), 'offline') });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/offline/register') {
+    if (!PUBLIC_REGISTRATION_ENABLED) return json(res, 403, { error: '公网环境已关闭自助注册，请联系管理员预先创建测试账号' });
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const phone = safe(body.phone, 20);
+    const password = String(body.password || '');
+    if (!validPhone(phone) || !OFFLINE_PHONE_HASHES.has(hashPhone(phone))) return json(res, 403, { error: '该手机号未获线下实体端授权' });
+    if (!validPassword(password)) return json(res, 400, { error: '密码须为 9-15 位，并同时包含大写字母、小写字母和数字' });
+    if (password !== String(body.confirmPassword || '')) return json(res, 400, { error: '两次输入的密码不一致' });
+    if (db.offlineAccounts.some((item) => item.phoneHash === hashPhone(phone))) return json(res, 409, { error: '该授权手机号已注册，请直接登录' });
+    db.offlineAccounts.push({ phoneHash: hashPhone(phone), passwordHash: hashPassword(password), status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const token = createSession(phone, 'offline');
+    audit(db, 'offline.register', phone, 'offline-portal', { ip: clientIp(req) });
+    writeDb(db);
+    return json(res, 201, { phone }, { 'Set-Cookie': sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000), 'offline') });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/offline/logout') {
+    const session = sessionFor(req, 'offline');
+    if (session) sessions.delete(session.token);
+    return json(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie('', 0, 'offline') });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/offline/session') {
+    const session = sessionFor(req, 'offline');
+    return json(res, 200, { authenticated: Boolean(session), phone: session?.user || null, registrationEnabled: PUBLIC_REGISTRATION_ENABLED });
   }
 
   if (req.method === 'GET' && url.pathname === '/api/dev/test-fixtures') {
@@ -795,6 +1067,7 @@ async function api(req, res, url) {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/student/register') {
+    if (!PUBLIC_REGISTRATION_ENABLED) return json(res, 403, { error: '公网环境已关闭自助注册，请联系管理员预先创建测试账号' });
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
     const phone = safe(body.phone, 20);
@@ -831,7 +1104,7 @@ async function api(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/student/session') {
     const session = sessionFor(req, 'student');
-    return json(res, 200, { authenticated: Boolean(session), phone: session?.user || null });
+    return json(res, 200, { authenticated: Boolean(session), phone: session?.user || null, registrationEnabled: PUBLIC_REGISTRATION_ENABLED });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/student/records') {
@@ -846,10 +1119,10 @@ async function api(req, res, url) {
       const records = [...db.orders, ...db.tickets]
         .filter((record) => record.phone === phone && (studentSession || verifyPassword(body.password, record.passwordHash)))
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating }) => {
+        .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
           const record = findRecord(db, id);
           const voucher = db.vouchers.find((item) => item.recordId === id);
-          return { id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating, voucher: await studentVoucher(voucher, record, url) };
+          return { id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
         });
       return json(res, 200, { records: await Promise.all(records) });
     }
@@ -861,10 +1134,10 @@ async function api(req, res, url) {
     const records = [...db.orders, ...db.tickets]
       .filter((record) => record.schoolCode === schoolCode && record.phone === phone)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating }) => {
+      .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
         const record = findRecord(db, id);
         const voucher = db.vouchers.find((item) => item.recordId === id);
-        return { id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating, voucher: await studentVoucher(voucher, record, url) };
+        return { id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
       });
     return json(res, 200, { records: await Promise.all(records) });
   }
@@ -912,6 +1185,11 @@ async function api(req, res, url) {
       scheduledAt: '',
       deliveryCarrier: '',
       deliveryTrackingNo: '',
+      offlineLocation: '',
+      offlineFeatureCode: '',
+      offlineAssignedAt: '',
+      offlineVerifiedAt: '',
+      offlineVerificationReference: '',
       serviceResult: '',
       statusHistory: [],
       completionConfirmedAt: '',
@@ -921,16 +1199,16 @@ async function api(req, res, url) {
     if (!record.name) return json(res, 400, { error: '请输入姓名' });
     if (!studentSession && process.env.NODE_ENV !== 'test' && !validPassword(body.password)) return json(res, 400, { error: '办理密码需为 9-15 位且包含大小写字母和数字' });
     if (validPassword(body.password)) record.passwordHash = hashPassword(body.password);
-    if (!validIdCard(record.idCard)) return json(res, 400, { error: '请输入正确的 18 位身份证号码' });
+    if (!validIdCard(record.idCard)) return json(res, 400, { error: '身份证号格式或校验位不正确，请核对后重试' });
     if (!record.college) return json(res, 400, { error: '请输入所属学院' });
     if (!validPhone(record.phone)) return json(res, 400, { error: '请输入正确的 11 位手机号码' });
     if (record.backupPhone && !validPhone(record.backupPhone)) return json(res, 400, { error: '备用联系电话应为正确的 11 位手机号码' });
     if (!record.detail) return json(res, 400, { error: '请填写需求说明' });
     if (!record.type) return json(res, 400, { error: '请选择服务项目' });
     if (!record.serviceConsent) return json(res, 400, { error: '请先同意信息收集和后续联系说明' });
+    let idImages;
     try {
-      record.idCardFrontFile = saveIdImage(body.idCardFrontImage, record.id, 'front');
-      record.idCardBackFile = saveIdImage(body.idCardBackImage, record.id, 'back');
+      idImages = { front: parseIdImage(body.idCardFrontImage), back: parseIdImage(body.idCardBackImage) };
     } catch (error) { return json(res, 400, { error: error.message }); }
     if (url.pathname === '/api/orders' && record.type.includes('选号')) {
       const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId && item.status === 'available');
@@ -941,9 +1219,21 @@ async function api(req, res, url) {
       record.deliveryStatus = 'pending';
       record.activationStatus = 'pending';
       record.subsidyStatus = 'pending';
+      record.offlineLocation = db.settings.offlineVerificationAddress;
+      record.offlineFeatureCode = uniqueFeatureCode(db);
+      record.offlineAssignedAt = new Date().toISOString();
     } else {
       record.selectedNumber = '';
       record.fulfillmentMethod = '';
+    }
+    try {
+      record.idCardFrontFile = saveIdImage(idImages.front, record.id, 'front');
+      record.idCardBackFile = saveIdImage(idImages.back, record.id, 'back');
+    } catch (error) {
+      for (const filename of [record.idCardFrontFile, record.idCardBackFile].filter(Boolean)) {
+        try { fs.unlinkSync(path.join(UPLOAD_DIR, filename)); } catch { /* Nothing persisted for this order. */ }
+      }
+      return json(res, 500, { error: '身份证图片加密存储失败，请稍后重试' });
     }
     if (record.selectedOfferId) {
       const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId);
@@ -951,7 +1241,7 @@ async function api(req, res, url) {
       offer.reservedBy = record.id;
     }
     record.statusHistory.push({ status: record.status, at: record.createdAt, by: 'student' });
-    record.verificationStatus = 'not_required';
+    record.verificationStatus = record.selectedOfferId ? 'pending_manual' : 'not_required';
     const collection = url.pathname === '/api/orders' ? db.orders : db.tickets;
     collection.push(record);
     audit(db, 'student.submitted', 'student', record.id, { schoolCode, type: record.type });
@@ -959,10 +1249,38 @@ async function api(req, res, url) {
     return json(res, 201, { record: { id: record.id, type: record.type, status: record.status, verificationStatus: record.verificationStatus } });
   }
 
+  if (req.method === 'PATCH' && url.pathname === '/api/admin/offline-settings') {
+    const session = requireAdmin(req, res);
+    if (!session) return;
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const verificationAddress = safe(body.verificationAddress, 160);
+    if (!verificationAddress) return json(res, 400, { error: '请输入可办理线下实名认证的地址' });
+    const updatedAt = new Date().toISOString();
+    db.settings.offlineVerificationAddress = verificationAddress;
+    db.settings.offlineVerificationAddressUpdatedAt = updatedAt;
+    let affectedOrders = 0;
+    for (const record of db.orders) {
+      if (!record.selectedOfferId || record.status === 'cancelled' || record.activationStatus === 'activated') continue;
+      record.offlineLocation = verificationAddress;
+      if (!record.offlineFeatureCode) record.offlineFeatureCode = uniqueFeatureCode(db);
+      record.offlineAssignedAt = updatedAt;
+      record.updatedAt = updatedAt;
+      affectedOrders += 1;
+    }
+    audit(db, 'offline-address.updated', session.user, 'global-settings', { affectedOrders });
+    writeDb(db);
+    return json(res, 200, { verificationAddress, updatedAt, affectedOrders });
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/admin/overview') {
     if (!requireAdmin(req, res)) return;
     const openRecords = (records) => records.filter((record) => !['completed', 'cancelled'].includes(record.status)).length;
     return json(res, 200, {
+      offlineSettings: {
+        verificationAddress: db.settings.offlineVerificationAddress,
+        updatedAt: db.settings.offlineVerificationAddressUpdatedAt
+      },
       schools: db.schools.filter((item) => item.code !== TEST_SCHOOL_CODE),
       orders: db.orders.slice(-300).reverse(),
       tickets: db.tickets.slice(-300).reverse(),
@@ -1111,6 +1429,80 @@ async function api(req, res, url) {
     }
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/offline/matches') {
+    const session = requireOffline(req, res);
+    if (!session) return;
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const match = matchOfflineRecord(db, body.featureCode, body.idCard);
+    if (!match) return json(res, 400, { error: '匹配失败。请核对特征码和学生身份证号码，或确认该号码尚未激活。' });
+    const matchToken = crypto.randomBytes(32).toString('base64url');
+    offlineMatches.set(matchToken, { worker: session.user, recordId: match.record.id, featureCode: match.normalizedCode, expiresAt: Date.now() + 5 * 60 * 1000 });
+    return json(res, 200, {
+      matchToken,
+      expiresInSeconds: 300,
+      record: {
+        id: match.record.id,
+        name: match.record.name,
+        phone: match.record.phone,
+        backupPhone: match.record.backupPhone,
+        schoolName: match.record.schoolName,
+        operator: match.record.operator,
+        selectedNumber: match.record.selectedNumber,
+        offlineLocation: match.record.offlineLocation,
+        verificationStatus: match.record.verificationStatus,
+        activationStatus: match.record.activationStatus
+      }
+    });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/offline/verifications') {
+    const session = requireOffline(req, res);
+    if (!session) return;
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const matchToken = safe(body.matchToken, 100);
+    const pendingMatch = offlineMatches.get(matchToken);
+    if (!pendingMatch || pendingMatch.worker !== session.user || pendingMatch.expiresAt <= Date.now()) return json(res, 400, { error: '匹配确认已失效，请重新核对学生信息' });
+    const pendingRecord = db.orders.find((item) => item.id === pendingMatch.recordId);
+    const record = pendingRecord ? activateOfflineRecord(db, { code: pendingMatch.featureCode, idCard: pendingRecord.idCard, reference: body.reference, worker: session.user }) : null;
+    offlineMatches.delete(matchToken);
+    if (!record) return json(res, 409, { error: '订单状态已变化，请重新匹配' });
+    writeDb(db);
+    return json(res, 201, { record: { id: record.id, selectedNumber: record.selectedNumber, activationStatus: record.activationStatus, verifiedAt: record.offlineVerifiedAt } });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/offline/verifications/import') {
+    const session = requireOffline(req, res);
+    if (!session) return;
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    if (!body.fileBase64) return json(res, 400, { error: '请上传实名验证消息 Excel 文件' });
+    let rows;
+    try {
+      const workbook = XLSX.read(Buffer.from(String(body.fileBase64).replace(/^data:.*?;base64,/, ''), 'base64'), { type: 'buffer' });
+      rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '' });
+    } catch { return json(res, 400, { error: 'Excel 文件无法解析，请检查文件格式' }); }
+    if (!rows.length) return json(res, 400, { error: 'Excel 中没有可导入的数据' });
+    const aliases = (row, names) => names.map((name) => row[name]).find((value) => value !== undefined && String(value).trim() !== '') ?? '';
+    const activated = [];
+    const rejected = [];
+    for (const row of rows) {
+      const code = safe(aliases(row, ['特征码', 'featureCode', 'Feature Code']), 40).toUpperCase();
+      const idCard = safe(aliases(row, ['身份证号码', '身份证号', 'idCard', 'ID Card']), 18).toUpperCase();
+      const reference = safe(aliases(row, ['实名验证消息', '验证流水号', '验证编号', 'reference', 'message']), 200);
+      const record = activateOfflineRecord(db, { code, idCard, reference, worker: session.user });
+      if (!record) {
+        rejected.push(code || 'empty');
+        continue;
+      }
+      activated.push(record.id);
+    }
+    if (!activated.length) return json(res, 400, { error: '没有匹配成功的实名记录。请检查特征码和身份证号码是否与学生订单一致。', rejected: rejected.length });
+    writeDb(db);
+    return json(res, 201, { activated: activated.length, rejected: rejected.length });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/student/confirm-completion') {
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
@@ -1220,6 +1612,33 @@ async function api(req, res, url) {
     return res.end(buffer);
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/admin/export-activated.xlsx') {
+    if (!requireAdmin(req, res)) return;
+    let activatedRecords;
+    try {
+      activatedRecords = db.activatedArchives.map(decryptActivatedArchive);
+    } catch {
+      return json(res, 500, { error: '已激活名单解密失败，请检查服务器加密密钥是否与归档时一致' });
+    }
+    const rows = activatedRecords
+      .sort((a, b) => `${a.schoolName || ''}\u0000${a.college || ''}\u0000${a.name || ''}`.localeCompare(`${b.schoolName || ''}\u0000${b.college || ''}\u0000${b.name || ''}`, 'zh-CN'))
+      .map((record) => ({
+        学校: record.schoolName,
+        学院: record.college,
+        姓名: record.name,
+        身份证号: record.idCard,
+        选号号码: record.selectedNumber,
+        联系电话: record.phone,
+        备选联系电话: record.backupPhone,
+        激活状态: record.activationStatus === 'activated' ? '已激活' : record.activationStatus
+      }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows, { header: ['学校', '学院', '姓名', '身份证号', '选号号码', '联系电话', '备选联系电话', '激活状态'] }), '已实名激活名单');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="campus-activated-records.xlsx"', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    return res.end(buffer);
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/admin/export-pending.xlsx') {
     if (!requireAdmin(req, res)) return;
     const pendingStatuses = new Set(['pending', 'contacting', 'assigned', 'scheduled', 'processing']);
@@ -1258,6 +1677,8 @@ async function api(req, res, url) {
     if (!allowedDeliveryStatuses.has(nextDelivery)) return json(res, 400, { error: '交付进度无效' });
     if (!allowedActivationStatuses.has(nextActivation)) return json(res, 400, { error: '实名激活状态无效' });
     if (!allowedSubsidyStatuses.has(nextSubsidy)) return json(res, 400, { error: '补贴状态无效' });
+    if (record.selectedOfferId && nextVerification !== record.verificationStatus) return json(res, 403, { error: '选号订单的实名核验状态只能由线下实体端更新' });
+    if (record.selectedOfferId && nextActivation !== record.activationStatus) return json(res, 403, { error: '选号订单的激活状态只能由线下实体端更新' });
     if (nextStatus === 'assigned' && !nextAssignee) return json(res, 400, { error: '派单前请填写服务负责人' });
     if (nextStatus === 'scheduled' && !nextScheduledAt) return json(res, 400, { error: '预约服务前请填写预约时间' });
     if (nextDelivery === 'shipped' && (!nextCarrier || !nextTrackingNo)) return json(res, 400, { error: '交付快递前请填写承运商和运单号' });
@@ -1301,6 +1722,23 @@ const mimeTypes = {
   '.svg': 'image/svg+xml'
 };
 
+const publicStaticFiles = new Set([
+  'index.html', 'styles.css', 'app.js', 'student-extra.css', 'operator-extra.css', 'restored-services.css',
+  'dispatch.html', 'dispatch.js', 'student-login.html', 'student-login.js',
+  'admin-login.html', 'admin-login.js', 'admin-register.html', 'admin-register.js',
+  'operator.html', 'operator.js', 'redeem.html', 'redeem.js',
+  'offline.html', 'offline.js', 'offline-login.html', 'offline-login.js',
+  'offline-register.html', 'offline-register.js'
+]);
+const publicMiniprogramExtensions = new Set(['.js', '.json', '.wxml', '.wxss']);
+
+function isPublicStaticFile(file) {
+  const relative = path.relative(ROOT, file).split(path.sep).join('/');
+  if (!relative || relative.startsWith('../') || path.isAbsolute(relative)) return false;
+  if (publicStaticFiles.has(relative)) return true;
+  return relative.startsWith('miniprogram/') && publicMiniprogramExtensions.has(path.extname(relative).toLowerCase());
+}
+
 function staticFile(req, res, url) {
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === '/') pathname = '/index.html';
@@ -1309,13 +1747,16 @@ function staticFile(req, res, url) {
   if (pathname.startsWith('/q/')) pathname = '/dispatch.html';
   if (pathname.startsWith('/service/')) pathname = '/index.html';
   if (pathname.startsWith('/redeem/')) pathname = '/redeem.html';
+  if (pathname === '/offline' || pathname === '/offline/') pathname = '/offline.html';
+  if (pathname === '/offline/login') pathname = '/offline-login.html';
+  if (pathname === '/offline/register') pathname = '/offline-register.html';
   if (pathname === '/admin' || pathname === '/admin/') pathname = '/operator.html';
   if (pathname === '/admin/login') pathname = '/admin-login.html';
   if (pathname === '/admin/register') pathname = '/admin-register.html';
   if (pathname === '/student/login') pathname = '/student-login.html';
   if (pathname === '/student/register') pathname = '/student-login.html';
   const file = path.resolve(ROOT, `.${pathname}`);
-  if (!file.startsWith(path.resolve(ROOT)) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return text(res, 404, 'Not found');
+  if (!isPublicStaticFile(file) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return text(res, 404, 'Not found');
   res.writeHead(200, {
     'Content-Type': mimeTypes[path.extname(file).toLowerCase()] || 'application/octet-stream',
     'Cache-Control': 'no-store',
@@ -1325,6 +1766,19 @@ function staticFile(req, res, url) {
 }
 
 const requestHandler = async (req, res) => {
+  const originalWriteHead = res.writeHead;
+  const securityHeaders = {
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' https://res.wx.qq.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    'Referrer-Policy': 'no-referrer',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    ...(IS_PRODUCTION ? { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' } : {})
+  };
+  res.writeHead = function writeHeadWithSecurity(statusCode, statusMessage, headers) {
+    if (typeof statusMessage === 'string') return originalWriteHead.call(this, statusCode, statusMessage, { ...securityHeaders, ...(headers || {}) });
+    return originalWriteHead.call(this, statusCode, { ...securityHeaders, ...(statusMessage || {}) });
+  };
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   try {
     if (url.pathname.startsWith('/api/')) {
