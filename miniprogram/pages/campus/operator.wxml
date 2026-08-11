@@ -1,0 +1,14 @@
+<view class="page">
+  <view wx:if="{{!loggedIn}}" class="panel login-panel"><view class="section-title">运营商管理登录</view><view class="section-copy">请使用云函数环境变量 CAMPUS_STAFF_KEY 配置的管理口令。</view><input class="input" password value="{{staffKey}}" data-key="staffKey" bindinput="setField" placeholder="管理口令" /><button class="primary" bindtap="login">进入管理台</button></view>
+  <block wx:else>
+    <view class="section-head"><view class="section-title">号码库存</view><view class="section-copy">每行一条：运营商，号码，套餐名称，月费，线下地址</view></view>
+    <view class="panel"><textarea class="textarea import-area" data-key="numberText" value="{{numberText}}" bindinput="setField" placeholder="中国移动，13800000001，校园套餐A，39，XX大学东门营业厅" /><input class="input" data-key="addressText" value="{{addressText}}" bindinput="setField" placeholder="统一线下地址（可选）" /><button class="primary" bindtap="importNumbers">导入号码库存</button></view>
+    <view class="section-head"><view class="section-title">选号订单</view><button size="mini" bindtap="loadOrders">刷新</button></view>
+    <view wx:if="{{!orders.length}}" class="panel empty">暂无订单</view>
+    <view wx:for="{{orders}}" wx:key="id" class="record">
+      <view class="record-top"><text>{{item.name}} · {{item.displayNumber}}</text><text class="status {{item.status}}">{{item.status === 'activated' ? '已激活' : '待实名'}}</text></view>
+      <view class="record-line">特征码：{{item.featureCode}}　{{item.operator}}</view><view class="record-line">学生电话：{{item.phone}}</view>
+      <view class="address-row"><input class="input" value="{{item.outletAddress}}" data-index="{{index}}" bindinput="setOrderAddress" placeholder="线下办理地址" /><button size="mini" bindtap="assignAddress" data-index="{{index}}">保存地址</button></view>
+    </view>
+  </block>
+</view>

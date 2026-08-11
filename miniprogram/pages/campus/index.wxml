@@ -1,0 +1,15 @@
+<view class="page">
+  <view class="hero">
+    <view class="eyebrow">校园通信服务</view>
+    <view class="hero-title">选号与线下实名办理</view>
+    <view class="hero-copy">学生线上选号，工作人员在线下完成实名验证和激活。</view>
+  </view>
+  <view class="role-list">
+    <view wx:for="{{roles}}" wx:key="title" class="role-item" bindtap="openRole" data-path="{{item.path}}">
+      <view class="role-index">0{{index + 1}}</view>
+      <view class="role-main"><view class="role-title">{{item.title}}</view><view class="role-description">{{item.description}}</view></view>
+      <view class="arrow">›</view>
+    </view>
+  </view>
+  <button class="secondary" bindtap="openQuickStart">打开原有云开发示例</button>
+</view>

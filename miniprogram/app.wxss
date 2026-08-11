@@ -16,3 +16,19 @@ button::after { border: 0; }
 .service-item text:first-child { font-weight: 700; }
 .arrow { color: #8aa0af; font-size: 38rpx; }
 .consent { display: flex; gap: 12rpx; margin: 24rpx 0; color: #5f7181; font-size: 24rpx; line-height: 1.6; }
+
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+page {
+  background: #f4f7f9;
+  color: #203447;
+  font-size: 28rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}

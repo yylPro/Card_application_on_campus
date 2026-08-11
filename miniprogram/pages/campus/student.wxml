@@ -1,0 +1,27 @@
+<view class="page">
+  <view class="section-head"><view class="section-title">选择号码</view><view class="section-copy">号码将在提交成功后锁定，实名验证完成后正式激活。</view></view>
+  <view class="panel">
+    <view class="field"><view class="field-label">运营商</view><picker range="{{operators}}" value="{{operatorIndex}}" bindchange="pickOperator"><view class="picker">{{operators[operatorIndex]}} <text class="picker-arrow">⌄</text></view></picker></view>
+    <view class="offer-grid">
+      <view wx:for="{{offers}}" wx:key="id" class="offer {{selectedOfferId === item.id ? 'offer-selected' : ''}}" bindtap="selectOffer" data-id="{{item.id}}">
+        <view class="offer-number">{{item.displayNumber}}</view><view class="offer-plan">{{item.planName}}</view><view class="offer-fee">{{item.monthlyFee}} 元/月</view>
+        <view wx:if="{{selectedOfferId === item.id}}" class="selected-mark">已选择</view>
+      </view>
+    </view>
+    <view wx:if="{{!offers.length}}" class="empty">暂无可选号码，请联系运营商导入库存。</view>
+    <view class="pager"><button size="mini" bindtap="previousPage" disabled="{{page <= 1}}">上一页</button><text>第 {{page}} / {{totalPages}} 页</text><button size="mini" bindtap="nextPage" disabled="{{page >= totalPages}}">下一页</button></view>
+  </view>
+  <view class="panel">
+    <view class="section-title small-title">填写预约信息</view>
+    <view class="field"><view class="field-label">姓名</view><input class="input" data-key="name" value="{{name}}" bindinput="setField" placeholder="请输入姓名" /></view>
+    <view class="field"><view class="field-label">学号（可选）</view><input class="input" data-key="studentNo" value="{{studentNo}}" bindinput="setField" placeholder="请输入学号" /></view>
+    <view class="field"><view class="field-label">联系电话</view><input class="input" data-key="phone" value="{{phone}}" bindinput="setField" type="number" maxlength="11" placeholder="请输入手机号" /></view>
+    <button class="primary" loading="{{loading}}" bindtap="reserve">提交选号</button>
+  </view>
+  <view wx:if="{{orders.length}}" class="section-head"><view class="section-title">我的办理记录</view></view>
+  <view wx:for="{{orders}}" wx:key="id" class="record">
+    <view class="record-top"><text>{{item.displayNumber}}</text><text class="status {{item.status}}">{{item.status === 'activated' ? '已激活' : '待实名'}}</text></view>
+    <view class="record-line">特征码：{{item.featureCode}}</view><view class="record-line">办理地址：{{item.outletAddress}}</view>
+    <view wx:if="{{item.verifiedAt}}" class="record-line">身份证后四位：{{item.idCardLast4}}</view>
+  </view>
+</view>

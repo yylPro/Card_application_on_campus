@@ -1,0 +1,47 @@
+page { background: #f4f7f9; color: #17212b; }
+.page { padding: 28rpx 30rpx 70rpx; box-sizing: border-box; }
+.hero { background: #0b6cb7; color: #fff; padding: 38rpx 34rpx; border-radius: 10rpx; margin-bottom: 24rpx; }
+.eyebrow { font-size: 24rpx; opacity: .8; margin-bottom: 18rpx; }
+.hero-title { font-size: 46rpx; font-weight: 600; margin-bottom: 14rpx; }
+.hero-copy, .section-copy { color: #61717f; font-size: 26rpx; line-height: 1.6; }
+.hero-copy { color: rgba(255,255,255,.82); }
+.role-list, .panel, .record { background: #fff; border-radius: 8rpx; }
+.role-list { overflow: hidden; margin-bottom: 28rpx; }
+.role-item { display: flex; align-items: center; padding: 32rpx 28rpx; border-bottom: 1rpx solid #e8edf0; }
+.role-item:last-child { border-bottom: 0; }
+.role-index { color: #0b6cb7; font-size: 24rpx; width: 68rpx; }
+.role-main { flex: 1; }
+.role-title, .section-title { font-size: 34rpx; font-weight: 600; }
+.role-description { color: #71808c; font-size: 25rpx; margin-top: 8rpx; }
+.arrow { color: #0b6cb7; font-size: 44rpx; line-height: 1; }
+.secondary, .primary { border-radius: 6rpx; font-size: 29rpx; }
+.secondary { color: #0b6cb7; background: #fff; border: 1rpx solid #c9dce8; }
+.primary { background: #0b6cb7; color: #fff; margin-top: 24rpx; }
+.section-head { padding: 22rpx 2rpx 16rpx; display: flex; align-items: flex-end; justify-content: space-between; }
+.section-title { font-size: 34rpx; }
+.small-title { font-size: 30rpx; margin-bottom: 20rpx; }
+.panel { padding: 28rpx; margin-bottom: 20rpx; }
+.field { margin-bottom: 24rpx; }
+.field-label { color: #42515c; font-size: 26rpx; margin-bottom: 10rpx; }
+.input, .picker, .textarea { box-sizing: border-box; width: 100%; background: #f5f7f8; border: 1rpx solid #e1e8ec; border-radius: 6rpx; padding: 20rpx; font-size: 27rpx; }
+.picker { color: #17212b; }
+.picker-arrow { float: right; color: #71808c; }
+.offer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16rpx; }
+.offer { position: relative; min-height: 150rpx; border: 2rpx solid #e1e8ec; border-radius: 6rpx; padding: 22rpx; box-sizing: border-box; }
+.offer-selected { border-color: #0b6cb7; background: #f0f7fc; }
+.offer-number { color: #0b6cb7; font-size: 32rpx; font-weight: 600; }
+.offer-plan, .offer-fee, .record-line, .empty { color: #71808c; font-size: 24rpx; margin-top: 10rpx; }
+.offer-fee { color: #17212b; }
+.selected-mark { color: #0b6cb7; font-size: 22rpx; margin-top: 10rpx; }
+.pager { display: flex; align-items: center; justify-content: space-between; color: #71808c; font-size: 24rpx; margin-top: 22rpx; }
+.pager button, .section-head button, .address-row button { margin: 0; color: #0b6cb7; border: 1rpx solid #c9dce8; background: #fff; }
+.record { padding: 26rpx 28rpx; margin-bottom: 16rpx; }
+.record-top { display: flex; justify-content: space-between; align-items: center; font-size: 29rpx; font-weight: 600; }
+.status { color: #d47b00; font-size: 23rpx; font-weight: 400; }
+.status.activated { color: #18864b; }
+.status.failed { color: #c43d3d; }
+.import-area { min-height: 260rpx; }
+.login-panel { margin-top: 100rpx; }
+.address-row { display: flex; align-items: center; gap: 12rpx; margin-top: 18rpx; }
+.address-row .input { flex: 1; }
+.address-row button { flex: 0 0 auto; }

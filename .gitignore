@@ -1,7 +1,11 @@
 node_modules/
-data/db.json
 .env
 .env.*
+data/db.json
 certs/
 data/id-images/
 npm-debug.log*
+project.private.config.json
+*.log
+.DS_Store
+Thumbs.db
