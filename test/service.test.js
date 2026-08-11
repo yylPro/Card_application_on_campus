@@ -215,7 +215,12 @@ test('二维码、分流、H5 与小程序入口契约可用', async () => {
   assert.match(h5.body, /校园通信服务/);
   const miniProgramConfig = await request('/miniprogram/app.json');
   assert.equal(miniProgramConfig.response.status, 200);
-  assert.ok(miniProgramConfig.body.pages.includes('pages/home/home'));
+  assert.deepEqual(miniProgramConfig.body.pages, [
+    'pages/campus/index',
+    'pages/campus/student',
+    'pages/campus/operator',
+    'pages/campus/outlet'
+  ]);
   const fixtures = await request('/api/dev/test-fixtures');
   assert.equal(fixtures.response.status, 200);
   assert.equal(fixtures.body.school.code, 'TEST-2026');
