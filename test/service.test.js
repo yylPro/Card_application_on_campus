@@ -82,6 +82,12 @@ async function adminCookie() {
   return response.headers.get('set-cookie').split(';')[0];
 }
 
+async function authorizedAdminCookie() {
+  const { response } = await request('/api/auth/login', { method: 'POST', body: { phone: '18600000001', password: 'CampusAdmin2026' } });
+  assert.equal(response.status, 200);
+  return response.headers.get('set-cookie').split(';')[0];
+}
+
 async function createOrder(phone, overrides = {}) {
   const schoolCode = overrides.schoolCode || 'XXU-2026';
   const code = await testCode(phone, 'submit', schoolCode);
@@ -180,7 +186,23 @@ test('二维码、分流、H5 与小程序入口契约可用', async () => {
   assert.equal(fixtures.response.status, 200);
   assert.equal(fixtures.body.school.code, 'TEST-2026');
   assert.equal(fixtures.body.students.length, 3);
-  assert.equal(fixtures.body.availableOffers.length, 9);
+  assert.equal(fixtures.body.availableOffers.length, 12);
+});
+
+test('运营商未授权手机号不能登录或注册', async () => {
+  const login = await request('/api/auth/login', { method: 'POST', body: { phone: '12345678901', password: 'CampusAdmin2026' } });
+  assert.equal(login.response.status, 401);
+  const register = await request('/api/auth/register', { method: 'POST', body: { phone: '12345678901', password: 'AdminPass2026', confirmPassword: 'AdminPass2026' } });
+  assert.equal(register.response.status, 403);
+});
+
+test('不同授权运营商账号读取同一份共享业务数据', async () => {
+  const first = await request('/api/admin/overview', { cookie: await adminCookie() });
+  const second = await request('/api/admin/overview', { cookie: await authorizedAdminCookie() });
+  assert.equal(first.response.status, 200);
+  assert.equal(second.response.status, 200);
+  assert.deepEqual(second.body.orders.map((record) => record.id), first.body.orders.map((record) => record.id));
+  assert.deepEqual(second.body.tickets.map((record) => record.id), first.body.tickets.map((record) => record.id));
 });
 
 test('运营后台可创建学校、生成动态二维码并返回 PNG', async () => {
@@ -269,6 +291,51 @@ test('订单状态、审计历史、学生确认和评价完整闭环', async ()
   const confirmed = await request('/api/student/confirm-completion', { method: 'POST', body: { schoolCode: 'XXU-2026', phone: TEST_PHONES[2], recordId: id, code, rating: 5, ratingComment: '自动化测试评价' } });
   assert.equal(confirmed.response.status, 200);
   assert.equal(confirmed.body.record.rating, 5);
+});
+
+test('运营商结果导入后签发一次性凭证，线下核销必须验证原手机号', async () => {
+  const phone = '13700000001';
+  const created = await createOrder(phone, { type: '校园网账号预约' });
+  assert.equal(created.response.status, 201);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{
+    服务编号: created.body.record.id, 运营商: '中国移动', 运营商返回码: '实名完成-001'
+  }]), '实名结果');
+  const imported = await request('/api/admin/vouchers/import', {
+    method: 'POST', cookie: await adminCookie(),
+    body: { fileBase64: Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })).toString('base64') }
+  });
+  assert.equal(imported.response.status, 201);
+  assert.equal(imported.body.issued, 1);
+
+  const noCode = await request('/api/student/records', { method: 'POST', body: { schoolCode: 'XXU-2026', phone } });
+  assert.equal(noCode.response.status, 400);
+  const queryCode = await testCode(phone, 'query');
+  const records = await request('/api/student/records', { method: 'POST', body: { schoolCode: 'XXU-2026', phone, code: queryCode } });
+  assert.equal(records.response.status, 200);
+  assert.match(records.body.records[0].voucher.qrDataUrl, /^data:image\/png;base64,/);
+
+  const db = JSON.parse(fs.readFileSync(path.join(tempDir, 'db.json'), 'utf8'));
+  const voucher = db.vouchers.find((item) => item.recordId === created.body.record.id);
+  const redeemPath = `/api/redeem/${encodeURIComponent(voucher.token)}`;
+  assert.equal((await request(redeemPath)).body.status, 'issued');
+  assert.equal((await request(`${redeemPath}/confirm`, { method: 'POST', body: { code: '000000' } })).response.status, 400);
+  const redeemCode = await request(`${redeemPath}/request-code`, { method: 'POST' });
+  assert.equal(redeemCode.response.status, 200);
+  const code = smsMessages.at(-1).code;
+  const redeemed = await request(`${redeemPath}/confirm`, { method: 'POST', body: { code, redeemedBy: 'counter-01' } });
+  assert.equal(redeemed.response.status, 200);
+  assert.equal((await request(`${redeemPath}/confirm`, { method: 'POST', body: { code } })).response.status, 409);
+});
+
+test('学生可用手机号和办理密码查询本人服务', async () => {
+  const phone = '13700000003';
+  const password = 'CampusPass1';
+  const created = await createOrder(phone, { password });
+  assert.equal(created.response.status, 201);
+  const records = await request('/api/student/records', { method: 'POST', body: { phone, password } });
+  assert.equal(records.response.status, 200);
+  assert.ok(records.body.records.some((record) => record.id === created.body.record.id));
 });
 
 test('CRM、实名制与装维系统尚未接入，测试只验证内部状态字段', async () => {

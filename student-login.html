@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>学生登录 - 校园通信服务</title><link rel="stylesheet" href="/styles.css" /></head>
+  <body class="login-page"><main class="login-shell"><section class="login-panel">
+    <a class="brand" href="/service"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>校园通信服务</span></a>
+    <div class="login-copy"><p class="eyebrow">学生端</p><h1 id="pageTitle">登录办理账户</h1><p>登录后可提交资料、选号和查看本人办理进度。</p></div>
+    <form id="studentAuthForm"><label>手机号<input name="phone" type="tel" inputmode="numeric" maxlength="11" pattern="1[0-9]{10}" autocomplete="tel" required placeholder="请输入 11 位手机号" /></label><label>密码<input name="password" type="password" minlength="9" maxlength="15" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])[A-Za-z0-9]{9,15}" autocomplete="current-password" required placeholder="9-15 位，含大小写字母和数字" /></label><label id="confirmLabel" hidden>确认密码<input name="confirmPassword" type="password" minlength="9" maxlength="15" autocomplete="new-password" placeholder="再次输入密码" /></label><button class="primary-button" type="submit" id="submitButton">登录并进入办理</button></form>
+    <p class="login-hint" id="switchHint">还没有账户？<a href="/student/register">立即注册</a></p>
+  </section></main><div class="toast" id="toast" role="status"></div><script src="/student-login.js"></script></body>
+</html>

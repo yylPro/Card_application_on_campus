@@ -48,7 +48,7 @@ async function offerMiniProgram(entry) {
 }
 
 async function initDispatch() {
-  if (!dispatchSchoolCode) return showH5Only('二维码入口无效，请联系工作人员获取学校专属二维码。');
+  if (!dispatchSchoolCode) return showH5Only('统一二维码入口无效，请联系工作人员。');
   try {
     const response = await fetch(`/api/dispatch/${encodeURIComponent(dispatchSchoolCode)}`);
     const entry = await response.json();

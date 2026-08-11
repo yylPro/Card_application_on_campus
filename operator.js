@@ -9,10 +9,10 @@ const statusOptions = [
   ['cancelled', '已取消']
 ];
 const verificationOptions = [
-  ['pending_manual', '待人工核验'],
-  ['verified', '核验通过'],
-  ['rejected', '核验不通过'],
-  ['not_required', '无需核验']
+  ['pending_manual', '待处理'],
+  ['verified', '已完成实名'],
+  ['rejected', '办理未通过'],
+  ['not_required', '无需处理']
 ];
 let overview = null;
 let activeFilter = 'all';
@@ -85,7 +85,7 @@ function renderSchools(schools) {
   document.getElementById('schoolList').innerHTML = `<article class="school-card unified-entry-card">
     <img src="${unifiedQrUrl}" alt="统一服务入口二维码" />
     <div class="school-card-main"><div><span class="status-chip completed">统一入口</span><h3>全校通用二维码</h3><p>${unifiedEntry}</p><p class="school-meta">扫码后选择学校和学院；微信内优先进入小程序，其他环境进入 H5。</p></div><div class="school-actions"><a class="outline-button" href="${unifiedQrUrl}" download="统一服务入口二维码.png">下载统一二维码</a><button class="text-button" data-copy="${unifiedEntry}">复制链接</button></div></div>
-  </article>` + schools.map((school) => {
+  </article>`; /* 学校仅用于登记选择，不再生成或展示学校专属二维码 */ /* + schools.map((school) => {
     const qrUrl = `/api/admin/qr/${encodeURIComponent(school.code)}`;
     const entry = `${location.origin}/q/${encodeURIComponent(school.code)}`;
     const enabled = school.status === 'active';
@@ -106,7 +106,7 @@ function renderSchools(schools) {
         </div>
       </div>
     </article>`;
-  }).join('') || '<p class="empty-state">暂未创建学校入口。</p>';
+  }).join('') || '<p class="empty-state">暂未创建学校入口。</p>'; */
 }
 
 function renderRecords() {
@@ -216,6 +216,13 @@ document.getElementById('logoutButton').addEventListener('click', async () => {
   location.replace('/admin/login');
 });
 document.getElementById('exportButton').addEventListener('click', () => { location.assign('/api/admin/export.xlsx'); });
+document.getElementById('exportPendingButton')?.addEventListener('click', () => { location.assign('/api/admin/export-pending.xlsx'); });
+document.getElementById('refreshButton')?.addEventListener('click', async (event) => {
+  event.currentTarget.disabled = true;
+  try { await loadOverview(); showToast('已同步最新共享数据'); }
+  catch (error) { showToast(error.message, true); }
+  finally { event.currentTarget.disabled = false; }
+});
 document.querySelectorAll('[data-filter]').forEach((button) => {
   button.addEventListener('click', () => {
     activeFilter = button.dataset.filter;
@@ -354,10 +361,33 @@ document.getElementById('importNumberOffersButton').addEventListener('click', as
   reader.readAsDataURL(file);
 });
 
+document.getElementById('importVouchersButton').addEventListener('click', async () => {
+  const file = document.getElementById('voucherImportFile').files[0];
+  if (!file) return showToast('请选择运营商实名结果 Excel 文件', true);
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const result = await api('/api/admin/vouchers/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileBase64: reader.result }) });
+      showToast(`已签发 ${result.issued} 张凭证，跳过 ${result.skipped} 条`);
+      document.getElementById('voucherImportFile').value = '';
+      await loadOverview();
+    } catch (error) { showToast(error.message, true); }
+  };
+  reader.onerror = () => showToast('文件读取失败，请重试', true);
+  reader.readAsDataURL(file);
+});
+
 fetch('/api/auth/session')
   .then((response) => response.json())
   .then((session) => {
     if (!session.authenticated) location.replace('/admin/login');
-    else loadOverview().catch((error) => showToast(error.message, true));
+    else {
+      loadOverview().catch((error) => showToast(error.message, true));
+      window.addEventListener('focus', () => loadOverview().catch(() => {}));
+      window.setInterval(() => {
+        if (document.hidden) return;
+        loadOverview().catch(() => {});
+      }, 15000);
+    }
   })
   .catch(() => location.replace('/admin/login'));

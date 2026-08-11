@@ -288,3 +288,18 @@ input:focus, textarea:focus, select:focus { border-color: #318ccc; box-shadow: 0
   .verification-row .outline-button { flex-basis: 102px; }
   .login-panel { padding: 25px 20px; }
 }
+.voucher-card {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line, #d9dedf);
+}
+
+.voucher-card img {
+  width: min(220px, 60vw);
+  height: auto;
+  border: 6px solid #fff;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 12%);
+}

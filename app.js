@@ -7,6 +7,19 @@ const lookupModal = document.getElementById('lookupModal');
 const serviceForm = document.getElementById('serviceForm');
 const lookupForm = document.getElementById('lookupForm');
 const completionForm = document.getElementById('completionForm');
+let signedInPhone = '';
+
+fetch('/api/student/session')
+  .then((response) => response.json())
+  .then((session) => {
+    if (!session.authenticated) { location.replace('/student/login'); return; }
+    signedInPhone = session.phone || '';
+    const phone = serviceForm.elements.phone;
+    if (phone && signedInPhone) { phone.value = signedInPhone; phone.readOnly = true; }
+    const lookupPhone = lookupForm.elements.phone;
+    if (lookupPhone && signedInPhone) { lookupPhone.value = signedInPhone; lookupPhone.readOnly = true; }
+  })
+  .catch(() => location.replace('/student/login'));
 
 const identityInput = serviceForm.elements.idCard;
 const primaryPhoneInput = serviceForm.elements.phone;
@@ -22,14 +35,49 @@ backupPhoneInput.setAttribute('minlength', '11');
 backupPhoneInput.setAttribute('maxlength', '11');
 backupPhoneInput.setAttribute('pattern', '1[0-9]{10}');
 backupPhoneInput.setAttribute('inputmode', 'numeric');
+let studentPasswordInput = serviceForm.elements.password;
+if (!studentPasswordInput) {
+  const label = document.createElement('label');
+  label.textContent = '办理密码';
+  studentPasswordInput = document.createElement('input');
+  studentPasswordInput.name = 'password';
+  studentPasswordInput.type = 'password';
+  studentPasswordInput.autocomplete = 'new-password';
+  studentPasswordInput.placeholder = '9-15位，含大小写字母和数字';
+  label.append(studentPasswordInput);
+  backupPhoneInput.closest('label').after(label);
+}
+studentPasswordInput.minLength = 9;
+studentPasswordInput.maxLength = 15;
+studentPasswordInput.pattern = '(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])[A-Za-z0-9]{9,15}';
+studentPasswordInput.closest('label').hidden = true;
+const legacyCodeInput = lookupForm.elements.code;
+if (legacyCodeInput) legacyCodeInput.closest('label')?.remove();
+document.getElementById('sendCodeButton')?.remove();
+const lookupPasswordLabel = document.createElement('label');
+lookupPasswordLabel.textContent = '办理密码';
+const lookupPasswordInput = document.createElement('input');
+lookupPasswordInput.name = 'password';
+lookupPasswordInput.type = 'password';
+lookupPasswordInput.autocomplete = 'current-password';
+lookupPasswordInput.minLength = 9;
+lookupPasswordInput.maxLength = 15;
+lookupPasswordInput.pattern = '(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])[A-Za-z0-9]{9,15}';
+lookupPasswordInput.placeholder = '请输入办理时设置的密码';
+lookupPasswordLabel.append(lookupPasswordInput);
+lookupForm.elements.phone.closest('label').before(lookupPasswordLabel);
+lookupPasswordLabel.hidden = true;
+lookupForm.previousElementSibling.textContent = '请输入办理时设置的手机号和密码查询服务进度。';
 
 document.getElementById('nextServiceStepButton')?.addEventListener('click', (event) => {
   const idCard = identityInput.value.trim();
   const phone = primaryPhoneInput.value.trim();
   const backupPhone = backupPhoneInput.value.trim();
+  const password = studentPasswordInput.value.trim();
   const error = !/^\d{17}[\dXx]$/.test(idCard) ? '身份证号码必须为 18 位，末位可为 X'
     : !/^1\d{10}$/.test(phone) ? '联系电话必须为 11 位数字'
-      : backupPhone && !/^1\d{10}$/.test(backupPhone) ? '备用联系电话必须为 11 位数字' : '';
+      : backupPhone && !/^1\d{10}$/.test(backupPhone) ? '备用联系电话必须为 11 位数字'
+        : !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{9,15}$/.test(password) ? '办理密码需为 9-15 位且包含大小写字母和数字' : '';
   if (!error) return;
   event.stopImmediatePropagation();
   showToast(error, true);
@@ -174,7 +222,6 @@ function setService(title, kind) {
   serviceForm.elements.selectedOfferId.required = isNumberOrder;
   if (!isNumberOrder) serviceForm.elements.selectedOfferId.value = '';
   document.getElementById('fulfillmentNote').hidden = !isNumberOrder;
-  if (isNumberOrder) loadNumberOffers();
   openModal(serviceModal);
 }
 
@@ -204,6 +251,8 @@ function renderRecords(records) {
     <article class="record-item">
       <div><strong>${record.type}</strong><small>${record.id} · ${formatTime(record.createdAt)}${record.operator ? ` · ${record.operator} ${record.selectedNumber || ''}` : ''}</small></div>
       <span class="status-chip ${record.status}">${statusLabel(record.status)}</span>
+      ${record.voucher?.status === 'issued' ? `<div class="voucher-card"><strong>线下领卡凭证</strong><img src="${record.voucher.qrDataUrl}" alt="线下核销二维码" /><small>有效至 ${formatTime(record.voucher.expiresAt)}；到服务点出示后，须验证原手机号。</small></div>` : ''}
+      ${record.voucher && record.voucher.status !== 'issued' ? `<small class="record-confirmed">领卡凭证：${record.voucher.status === 'redeemed' ? '已核销' : record.voucher.status === 'expired' ? '已过期' : '已作废'}</small>` : ''}
       ${record.status === 'completed' && !record.completionConfirmedAt ? `<button class="text-button completion-open" data-completion-record="${record.id}">确认完成</button>` : ''}
       ${record.completionConfirmedAt ? `<small class="record-confirmed">已确认 · ${record.rating} 星</small>` : ''}
     </article>
@@ -242,7 +291,11 @@ async function loadSchool() {
 document.querySelectorAll('[data-open]').forEach((button) => {
   button.addEventListener('click', () => setService(button.dataset.open, button.dataset.kind));
 });
-document.getElementById('openNumberPickerButton')?.addEventListener('click', () => openModal(document.getElementById('numberPickerModal')));
+document.getElementById('openNumberPickerButton')?.addEventListener('click', async () => {
+  if (!selectedSchoolCode.value) return showToast('请先选择学校', true);
+  openModal(document.getElementById('numberPickerModal'));
+  await loadNumberOffers();
+});
 document.getElementById('confirmNumberButton')?.addEventListener('click', () => {
   if (!document.getElementById('selectedOfferId').value) return showToast('请先选择一个号码', true);
   closeModals();
@@ -337,18 +390,21 @@ lookupForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const submitButton = lookupForm.querySelector('[type="submit"]');
   const formData = new FormData(lookupForm);
+  const resultsTarget = document.getElementById('lookupResults');
+  if (resultsTarget) resultsTarget.innerHTML = '';
   submitButton.disabled = true;
   submitButton.textContent = '查询中...';
   try {
     const response = await fetch('/api/student/records', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ schoolCode, phone: formData.get('phone') })
+    body: JSON.stringify({ schoolCode, phone: formData.get('phone'), password: formData.get('password'), code: formData.get('code') })
     });
     const result = await readJson(response, '查询失败，请稍后再试');
     if (!response.ok) throw new Error(result.error || '查询失败');
     renderRecords(result.records);
   } catch (error) {
+    if (resultsTarget) resultsTarget.innerHTML = '';
     showToast(userError(error), true);
   } finally {
     submitButton.disabled = false;

@@ -2,4 +2,6 @@ node_modules/
 data/db.json
 .env
 .env.*
+certs/
+data/id-images/
 npm-debug.log*

@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>运营商注册 - 校园通信服务</title><link rel="stylesheet" href="/styles.css" /></head>
+  <body class="login-page"><main class="login-shell"><section class="login-panel">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>校园通信服务</span></a>
+    <div class="login-copy"><p class="eyebrow">运营商后台</p><h1>注册后台账户</h1><p>仅已授权的运营商手机号可创建后台账户。</p></div>
+    <form id="adminRegisterForm"><label>授权手机号<input name="phone" type="tel" inputmode="numeric" maxlength="11" pattern="1[0-9]{10}" required placeholder="请输入已授权手机号" /></label><label>密码<input name="password" type="password" minlength="9" maxlength="15" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])[A-Za-z0-9]{9,15}" required placeholder="9-15 位，含大小写字母和数字" /></label><label>确认密码<input name="confirmPassword" type="password" minlength="9" maxlength="15" required placeholder="再次输入密码" /></label><button class="primary-button" type="submit">注册后台账户</button></form><p class="login-hint">已有账户？<a href="/admin/login">直接登录</a></p>
+  </section></main><div class="toast" id="toast" role="status"></div><script src="/admin-register.js"></script></body>
+</html>

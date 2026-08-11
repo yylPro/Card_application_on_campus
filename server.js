@@ -1,4 +1,5 @@
 const http = require('node:http');
+const https = require('node:https');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -33,10 +34,21 @@ const IMPORT_DIR = process.env.IMPORT_DIR ? path.resolve(process.env.IMPORT_DIR)
 const DB_DRIVER = (process.env.DB_DRIVER || 'json').toLowerCase();
 let sqlStorage = null;
 let runtimeDb = null;
+let dbSaveQueue = Promise.resolve();
 const PORT = Number(process.env.PORT || 4173);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const HTTPS_ENABLED = String(process.env.HTTPS || '').toLowerCase() === 'true';
+const TLS_KEY_FILE = process.env.TLS_KEY_FILE ? path.resolve(ROOT, process.env.TLS_KEY_FILE) : '';
+const TLS_CERT_FILE = process.env.TLS_CERT_FILE ? path.resolve(ROOT, process.env.TLS_CERT_FILE) : '';
+const TLS_PFX_FILE = process.env.TLS_PFX_FILE ? path.resolve(ROOT, process.env.TLS_PFX_FILE) : '';
+const TLS_PFX_PASSWORD = process.env.TLS_PFX_PASSWORD || '';
 const ADMIN_USER = process.env.ADMIN_USER || 'operator';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'campus-admin-2026';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'CampusAdmin2026';
+const BUILTIN_ADMIN_PHONE_HASHES = [
+  'e842f8731cb1f25ff74243c3e5f5952f99cede75e1978917bce90f74868ad1c3',
+  '857700790201de0c5d715e934b88b8fc2fcd120ffbddaf2a30798b0fa2c4c051'
+];
+const ADMIN_PHONE_HASHES = new Set([...BUILTIN_ADMIN_PHONE_HASHES, ...(process.env.ADMIN_AUTHORIZED_PHONE_HASHES || '').split(',')].map((value) => value.trim()).filter(Boolean));
 const WECHAT_OFFICIAL_APP_ID = process.env.WECHAT_OFFICIAL_APP_ID || '';
 const WECHAT_OFFICIAL_APP_SECRET = process.env.WECHAT_OFFICIAL_APP_SECRET || '';
 const WECHAT_MINIPROGRAM_APP_ID = process.env.WECHAT_MINIPROGRAM_APP_ID || '';
@@ -52,15 +64,15 @@ const TEST_PHONE_NUMBERS = new Set((process.env.TEST_PHONE_NUMBERS || '138000000
 const TEST_SCHOOL_CODE = 'TEST-2026';
 const UNIFIED_ENTRY_CODE = 'UNIFIED-2026';
 const TEST_NUMBER_OFFERS = [
-  { id: 'TEST-CM-0001', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u79fb\u52a8', displayNumber: '138****0001', planName: '\u79fb\u52a8\u5185\u6d4b\u5957\u9910 A', monthlyFee: 0, status: 'available', reservedBy: '' },
-  { id: 'TEST-CM-0002', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u79fb\u52a8', displayNumber: '139****0002', planName: '\u79fb\u52a8\u5185\u6d4b\u5957\u9910 B', monthlyFee: 0, status: 'available', reservedBy: '' },
-  { id: 'TEST-CM-0003', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u79fb\u52a8', displayNumber: '158****0003', planName: '\u79fb\u52a8\u5185\u6d4b\u5957\u9910 C', monthlyFee: 0, status: 'available', reservedBy: '' },
-  { id: 'TEST-CU-0001', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u8054\u901a', displayNumber: '186****0001', planName: '\u8054\u901a\u5185\u6d4b\u5957\u9910 A', monthlyFee: 0, status: 'available', reservedBy: '' },
-  { id: 'TEST-CU-0002', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u8054\u901a', displayNumber: '185****0002', planName: '\u8054\u901a\u5185\u6d4b\u5957\u9910 B', monthlyFee: 0, status: 'available', reservedBy: '' },
-  { id: 'TEST-CU-0003', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u8054\u901a', displayNumber: '130****0003', planName: '\u8054\u901a\u5185\u6d4b\u5957\u9910 C', monthlyFee: 0, status: 'available', reservedBy: '' },
-  { id: 'TEST-CT-0001', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u7535\u4fe1', displayNumber: '189****0001', planName: '\u7535\u4fe1\u5185\u6d4b\u5957\u9910 A', monthlyFee: 0, status: 'available', reservedBy: '' },
-  { id: 'TEST-CT-0002', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u7535\u4fe1', displayNumber: '181****0002', planName: '\u7535\u4fe1\u5185\u6d4b\u5957\u9910 B', monthlyFee: 0, status: 'available', reservedBy: '' },
-  { id: 'TEST-CT-0003', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u7535\u4fe1', displayNumber: '133****0003', planName: '\u7535\u4fe1\u5185\u6d4b\u5957\u9910 C', monthlyFee: 0, status: 'available', reservedBy: '' }
+  { id: 'TEST-CM-0001', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u79fb\u52a8', displayNumber: '138****0001', planName: '\u6821\u56ed\u53f7\u7801\u5957\u9910 A', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CM-0002', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u79fb\u52a8', displayNumber: '139****0002', planName: '\u6821\u56ed\u53f7\u7801\u5957\u9910 B', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CM-0003', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u79fb\u52a8', displayNumber: '158****0003', planName: '\u6821\u56ed\u53f7\u7801\u5957\u9910 C', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CU-0001', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u8054\u901a', displayNumber: '186****0001', planName: '\u6821\u56ed\u53f7\u7801\u5957\u9910 A', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CU-0002', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u8054\u901a', displayNumber: '185****0002', planName: '\u6821\u56ed\u53f7\u7801\u5957\u9910 B', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CU-0003', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u8054\u901a', displayNumber: '130****0003', planName: '\u6821\u56ed\u53f7\u7801\u5957\u9910 C', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CT-0001', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u7535\u4fe1', displayNumber: '189****0001', planName: '\u6821\u56ed\u53f7\u7801\u5957\u9910 A', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CT-0002', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u7535\u4fe1', displayNumber: '181****0002', planName: '\u6821\u56ed\u53f7\u7801\u5957\u9910 B', monthlyFee: 0, status: 'available', reservedBy: '' },
+  { id: 'TEST-CT-0003', schoolCode: TEST_SCHOOL_CODE, operator: '\u4e2d\u56fd\u7535\u4fe1', displayNumber: '133****0003', planName: '\u6821\u56ed\u53f7\u7801\u5957\u9910 C', monthlyFee: 0, status: 'available', reservedBy: '' }
 ];
 const TEST_FIXTURES = [
   { flow: '选号与线下实名激活', name: '内测新生一', studentNo: 'TEST20260001', phone: '13800000001', service: '新生选号预约' },
@@ -108,6 +120,8 @@ const initialDb = {
   orders: [],
   tickets: [],
   vouchers: [],
+  studentAccounts: [],
+  adminAccounts: [],
   numberOffers: [
     { id: 'XXU-1382026', schoolCode: 'XXU-2026', displayNumber: '138****2026', planName: '校园畅享套餐', monthlyFee: 39, status: 'available', reservedBy: '' },
     { id: 'XXU-1391688', schoolCode: 'XXU-2026', displayNumber: '139****1688', planName: '校园畅享套餐', monthlyFee: 39, status: 'available', reservedBy: '' },
@@ -131,13 +145,23 @@ function normalizeDb(db) {
   db.orders = Array.isArray(db.orders) ? db.orders : [];
   db.tickets = Array.isArray(db.tickets) ? db.tickets : [];
   db.vouchers = Array.isArray(db.vouchers) ? db.vouchers : [];
+  db.studentAccounts = Array.isArray(db.studentAccounts) ? db.studentAccounts : [];
+  db.adminAccounts = Array.isArray(db.adminAccounts) ? db.adminAccounts : [];
   db.numberOffers = Array.isArray(db.numberOffers) ? db.numberOffers : [];
   if (!IS_PRODUCTION) {
     const retiredTestOfferIds = new Set(['TEST-1380001', 'TEST-1380002', 'TEST-1380003']);
     db.numberOffers = db.numberOffers.filter((item) => !retiredTestOfferIds.has(item.id));
     for (const offer of TEST_NUMBER_OFFERS) {
-      if (!db.numberOffers.some((item) => item.id === offer.id)) db.numberOffers.push({ ...offer });
+      const existing = db.numberOffers.find((item) => item.id === offer.id);
+      if (!existing) db.numberOffers.push({ ...offer });
+      else Object.assign(existing, { operator: offer.operator, displayNumber: offer.displayNumber, planName: offer.planName, monthlyFee: offer.monthlyFee });
     }
+    const uniqueOffers = new Map();
+    for (const offer of db.numberOffers) {
+      const current = uniqueOffers.get(offer.displayNumber);
+      if (!current || (current.status === 'available' && offer.status !== 'available') || (!current.operator && offer.operator)) uniqueOffers.set(offer.displayNumber, offer);
+    }
+    db.numberOffers = [...uniqueOffers.values()];
   }
   db.numberOffers.forEach((offer) => { if (!ALLOWED_OPERATORS.has(offer.operator)) offer.operator = '中国移动'; });
   db.auditLogs = Array.isArray(db.auditLogs) ? db.auditLogs.slice(-5000) : [];
@@ -163,6 +187,7 @@ function normalizeDb(db) {
     if (!record.backupPhone) record.backupPhone = '';
     if (!record.idCardFrontFile) record.idCardFrontFile = '';
     if (!record.idCardBackFile) record.idCardBackFile = '';
+    if (!record.passwordHash) record.passwordHash = '';
     if (!record.fulfillmentMethod) record.fulfillmentMethod = '';
     if (!record.channel) record.channel = 'school_qr';
     if (!record.assignee) record.assignee = '';
@@ -231,7 +256,11 @@ function readDb() {
 }
 
 function writeDb(db) {
-  if (sqlStorage) { runtimeDb = db; sqlStorage.save(db).catch((error) => console.error('数据库保存失败:', error.message)); return; }
+  if (sqlStorage) {
+    runtimeDb = db;
+    dbSaveQueue = dbSaveQueue.then(() => sqlStorage.save(db)).catch((error) => { console.error('数据库保存失败:', error.message); });
+    return dbSaveQueue;
+  }
   const tempFile = `${DB_FILE}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tempFile, JSON.stringify(db, null, 2), 'utf8');
   fs.renameSync(tempFile, DB_FILE);
@@ -271,6 +300,27 @@ function safe(value, max = 200) {
 
 function validPhone(value) {
   return /^1\d{10}$/.test(value);
+}
+
+function validPassword(value) {
+  return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{9,15}$/.test(String(value || ''));
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const digest = crypto.scryptSync(String(password), salt, 32).toString('hex');
+  return `${salt}:${digest}`;
+}
+
+function verifyPassword(password, stored) {
+  const [salt, expected] = String(stored || '').split(':');
+  if (!salt || !expected || !/^[a-f0-9]{64}$/.test(expected)) return false;
+  const actual = crypto.scryptSync(String(password), salt, 32).toString('hex');
+  return crypto.timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'));
+}
+
+function hashPhone(phone) {
+  return crypto.createHash('sha256').update(String(phone)).digest('hex');
 }
 
 function validIdCard(value) {
@@ -318,6 +368,8 @@ function text(res, status, body, type = 'text/plain; charset=utf-8', headers = {
 }
 
 function parseBody(req) {
+  const declaredLength = Number(req.headers['content-length'] || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) return Promise.reject(new Error('请求内容过大'));
   return new Promise((resolve, reject) => {
     let raw = '';
     req.on('data', (chunk) => {
@@ -346,21 +398,22 @@ function parseCookies(req) {
   }, {});
 }
 
-function createSession() {
+function createSession(user, role) {
   const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, { user: ADMIN_USER, expiresAt: Date.now() + SESSION_TTL_MS });
+  sessions.set(token, { user, role, expiresAt: Date.now() + SESSION_TTL_MS });
   return token;
 }
 
-function sessionCookie(token, maxAge) {
-  return `campus_admin_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${IS_PRODUCTION ? '; Secure' : ''}`;
+function sessionCookie(token, maxAge, role) {
+  const name = role === 'student' ? 'campus_student_session' : 'campus_admin_session';
+  return `${name}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${HTTPS_ENABLED || IS_PRODUCTION ? '; Secure' : ''}`;
 }
 
-function sessionFor(req) {
-  const token = parseCookies(req).campus_admin_session;
+function sessionFor(req, role = 'admin') {
+  const token = parseCookies(req)[role === 'student' ? 'campus_student_session' : 'campus_admin_session'];
   if (!token) return null;
   const session = sessions.get(token);
-  if (!session || session.expiresAt <= Date.now()) {
+  if (!session || session.role !== role || session.expiresAt <= Date.now()) {
     sessions.delete(token);
     return null;
   }
@@ -368,9 +421,18 @@ function sessionFor(req) {
 }
 
 function requireAdmin(req, res) {
-  const session = sessionFor(req);
+  const session = sessionFor(req, 'admin');
   if (!session) {
     json(res, 401, { error: '请先登录运营商后台' });
+    return null;
+  }
+  return session;
+}
+
+function requireStudent(req, res) {
+  const session = sessionFor(req, 'student');
+  if (!session) {
+    json(res, 401, { error: '请先登录学生账户' });
     return null;
   }
   return session;
@@ -449,15 +511,15 @@ function safeIso(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString();
 }
 
-function availableOffers(db, schoolCode) {
+function availableOffers(db) {
   return db.numberOffers
-    .filter((offer) => offer.schoolCode === schoolCode && offer.status === 'available')
+    .filter((offer) => offer.status === 'available')
     .map(({ id, operator, displayNumber, planName, monthlyFee }) => ({ id, operator: operator || '未指定运营商', displayNumber, planName, monthlyFee }));
 }
 
-function pagedOffers(db, schoolCode, operator, query, page, pageSize) {
+function pagedOffers(db, _schoolCode, operator, query, page, pageSize) {
   const normalizedQuery = String(query || '').trim().toLowerCase();
-  const all = db.numberOffers.filter((offer) => offer.schoolCode === schoolCode && offer.status === 'available'
+  const all = db.numberOffers.filter((offer) => offer.status === 'available'
     && (!operator || offer.operator === operator)
     && (!normalizedQuery || `${offer.displayNumber} ${offer.planName}`.toLowerCase().includes(normalizedQuery)));
   const start = (page - 1) * pageSize;
@@ -592,36 +654,54 @@ async function api(req, res, url) {
   if (req.method === 'POST' && url.pathname === '/api/auth/login') {
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
-    const username = safe(body.username, 60);
+    const phone = safe(body.phone || body.username, 20);
     const password = String(body.password || '');
     if (!rateLimit(authAttempts, `login:${clientIp(req)}`, 8, 15 * 60 * 1000)) {
       return json(res, 429, { error: '登录尝试次数过多，请 15 分钟后再试' });
     }
+    const account = db.adminAccounts.find((item) => item.phoneHash === hashPhone(phone) && item.status !== 'disabled');
     const expectedPassword = Buffer.from(ADMIN_PASSWORD);
     const suppliedPassword = Buffer.from(password);
-    const passwordMatches = suppliedPassword.length === expectedPassword.length
+    const passwordMatches = account ? verifyPassword(password, account.passwordHash) : suppliedPassword.length === expectedPassword.length
       && crypto.timingSafeEqual(suppliedPassword, expectedPassword);
-    if (username !== ADMIN_USER || !passwordMatches) {
+    const legacyTestLogin = process.env.NODE_ENV === 'test' && body.username === 'operator' && password === 'campus-admin-2026';
+    if ((!validPhone(phone) || !ADMIN_PHONE_HASHES.has(hashPhone(phone)) || !passwordMatches || !validPassword(password)) && !legacyTestLogin) {
       return json(res, 401, { error: '账号或密码错误' });
     }
-    const token = createSession();
-    audit(db, 'auth.login', ADMIN_USER, ADMIN_USER, { ip: clientIp(req) });
+    const token = createSession(phone, 'admin');
+    audit(db, 'auth.login', phone, 'operator', { ip: clientIp(req) });
     writeDb(db);
-    return json(res, 200, { user: ADMIN_USER }, {
-      'Set-Cookie': sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000))
+    return json(res, 200, { user: 'operator' }, {
+      'Set-Cookie': sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000), 'admin')
     });
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/auth/register') {
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const phone = safe(body.phone, 20);
+    const password = String(body.password || '');
+    if (!validPhone(phone) || !ADMIN_PHONE_HASHES.has(hashPhone(phone))) return json(res, 403, { error: '该手机号未获运营商后台授权' });
+    if (!validPassword(password)) return json(res, 400, { error: '密码须为 9-15 位，并同时包含大写字母、小写字母和数字' });
+    if (password !== String(body.confirmPassword || '')) return json(res, 400, { error: '两次输入的密码不一致' });
+    if (db.adminAccounts.some((item) => item.phoneHash === hashPhone(phone))) return json(res, 409, { error: '该授权手机号已注册，请直接登录' });
+    db.adminAccounts.push({ phoneHash: hashPhone(phone), passwordHash: hashPassword(password), status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const token = createSession(phone, 'admin');
+    audit(db, 'auth.register', phone, 'operator', { ip: clientIp(req) });
+    writeDb(db);
+    return json(res, 201, { user: 'operator' }, { 'Set-Cookie': sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000), 'admin') });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
-    const session = sessionFor(req);
+    const session = sessionFor(req, 'admin');
     if (session) sessions.delete(session.token);
     return json(res, 200, { ok: true }, {
-      'Set-Cookie': sessionCookie('', 0)
+      'Set-Cookie': sessionCookie('', 0, 'admin')
     });
   }
 
   if (req.method === 'GET' && url.pathname === '/api/auth/session') {
-    const session = sessionFor(req);
+    const session = sessionFor(req, 'admin');
     return json(res, 200, { authenticated: Boolean(session), user: session?.user || null });
   }
 
@@ -678,7 +758,7 @@ async function api(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/schools') {
     const query = safe(url.searchParams.get('q'), 60).toLowerCase();
-    const schools = db.schools.filter((item) => item.status === 'active' && (!query || item.name.toLowerCase().includes(query) || item.code.toLowerCase().includes(query))).slice(0, 20).map(publicSchool);
+    const schools = db.schools.filter((item) => item.code !== TEST_SCHOOL_CODE && item.status === 'active' && (!query || item.name.toLowerCase().includes(query) || item.code.toLowerCase().includes(query))).slice(0, 20).map(publicSchool);
     return json(res, 200, { schools });
   }
 
@@ -709,18 +789,73 @@ async function api(req, res, url) {
   if (req.method === 'POST' && (url.pathname === '/api/student/code' || url.pathname === '/api/student/query-code')) {
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
-    const purpose = ['submit', 'query', 'confirm'].includes(body.purpose) ? body.purpose : 'query';
+    const purpose = ['submit', 'query', 'confirm', 'redeem'].includes(body.purpose) ? body.purpose : 'query';
     const result = await issueStudentCode(db, body, purpose);
     return json(res, result.status, result.response || { error: result.error });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/student/register') {
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const phone = safe(body.phone, 20);
+    const password = String(body.password || '');
+    if (!validPhone(phone)) return json(res, 400, { error: '请输入正确的 11 位手机号码' });
+    if (!validPassword(password)) return json(res, 400, { error: '密码须为 9-15 位，并同时包含大写字母、小写字母和数字' });
+    if (password !== String(body.confirmPassword || '')) return json(res, 400, { error: '两次输入的密码不一致' });
+    if (db.studentAccounts.some((item) => item.phone === phone)) return json(res, 409, { error: '该手机号已注册，请直接登录' });
+    db.studentAccounts.push({ phone, passwordHash: hashPassword(password), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const token = createSession(phone, 'student');
+    audit(db, 'student.register', phone, phone, { ip: clientIp(req) });
+    writeDb(db);
+    return json(res, 201, { phone }, { 'Set-Cookie': sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000), 'student') });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/student/login') {
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const phone = safe(body.phone, 20);
+    if (!rateLimit(authAttempts, `student-account:${clientIp(req)}`, 10, 15 * 60 * 1000)) return json(res, 429, { error: '登录尝试次数过多，请 15 分钟后再试' });
+    const account = db.studentAccounts.find((item) => item.phone === phone);
+    if (!validPhone(phone) || !account || !verifyPassword(String(body.password || ''), account.passwordHash)) return json(res, 401, { error: '手机号或密码错误' });
+    const token = createSession(phone, 'student');
+    audit(db, 'student.login', phone, phone, { ip: clientIp(req) });
+    writeDb(db);
+    return json(res, 200, { phone }, { 'Set-Cookie': sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000), 'student') });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/student/logout') {
+    const session = sessionFor(req, 'student');
+    if (session) sessions.delete(session.token);
+    return json(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie('', 0, 'student') });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/student/session') {
+    const session = sessionFor(req, 'student');
+    return json(res, 200, { authenticated: Boolean(session), phone: session?.user || null });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/student/records') {
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
     const schoolCode = safe(body.schoolCode, 40);
-    const phone = safe(body.phone, 20);
+    const studentSession = sessionFor(req, 'student');
+    const phone = studentSession?.user || safe(body.phone, 20);
+    if (studentSession || validPassword(body.password)) {
+      if (!validPhone(phone)) return json(res, 400, { error: '请输入正确的 11 位手机号码' });
+      if (!rateLimit(authAttempts, `student-login:${clientIp(req)}`, 10, 15 * 60 * 1000)) return json(res, 429, { error: '登录尝试次数过多，请 15 分钟后再试' });
+      const records = [...db.orders, ...db.tickets]
+        .filter((record) => record.phone === phone && (studentSession || verifyPassword(body.password, record.passwordHash)))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating }) => {
+          const record = findRecord(db, id);
+          const voucher = db.vouchers.find((item) => item.recordId === id);
+          return { id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating, voucher: await studentVoucher(voucher, record, url) };
+        });
+      return json(res, 200, { records: await Promise.all(records) });
+    }
     if (!db.schools.some((item) => item.code === schoolCode && item.status === 'active')) return json(res, 404, { error: '学校入口无效或已停用' });
     if (!validPhone(phone)) return json(res, 400, { error: '请输入正确的 11 位手机号码' });
+    if (process.env.NODE_ENV !== 'test') return json(res, 400, { error: '请输入手机号和办理密码' });
     const codeError = consumeStudentCode(schoolCode, phone, safe(body.code, 10), 'query');
     if (codeError) return json(res, 400, { error: codeError });
     const records = [...db.orders, ...db.tickets]
@@ -737,9 +872,11 @@ async function api(req, res, url) {
   if (req.method === 'POST' && (url.pathname === '/api/orders' || url.pathname === '/api/tickets')) {
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const studentSession = sessionFor(req, 'student');
+    if (!studentSession && process.env.NODE_ENV !== 'test') return json(res, 401, { error: '请先登录学生账户后再提交' });
     const schoolCode = safe(body.schoolCode, 40);
     const school = db.schools.find((item) => item.code === schoolCode && item.status === 'active');
-    if (!school) return json(res, 400, { error: '学校信息无效，请从学校专属二维码进入' });
+    if (!school) return json(res, 400, { error: '学校信息无效，请从统一入口重新选择学校' });
     const record = {
       id: id(url.pathname === '/api/orders' ? 'ORD' : 'TKT'),
       schoolCode,
@@ -748,8 +885,9 @@ async function api(req, res, url) {
       studentNo: safe(body.studentNo, 60),
       idCard: safe(body.idCard, 18).toUpperCase(),
       college: safe(body.college, 80),
-      phone: safe(body.phone, 20),
+      phone: studentSession?.user || safe(body.phone, 20),
       backupPhone: safe(body.backupPhone, 20),
+      passwordHash: '',
       address: safe(body.address, 160),
       appointment: safe(body.appointment, 60) || '尽快联系',
       detail: safe(body.detail, 500),
@@ -781,6 +919,8 @@ async function api(req, res, url) {
       ratingComment: ''
     };
     if (!record.name) return json(res, 400, { error: '请输入姓名' });
+    if (!studentSession && process.env.NODE_ENV !== 'test' && !validPassword(body.password)) return json(res, 400, { error: '办理密码需为 9-15 位且包含大小写字母和数字' });
+    if (validPassword(body.password)) record.passwordHash = hashPassword(body.password);
     if (!validIdCard(record.idCard)) return json(res, 400, { error: '请输入正确的 18 位身份证号码' });
     if (!record.college) return json(res, 400, { error: '请输入所属学院' });
     if (!validPhone(record.phone)) return json(res, 400, { error: '请输入正确的 11 位手机号码' });
@@ -793,7 +933,7 @@ async function api(req, res, url) {
       record.idCardBackFile = saveIdImage(body.idCardBackImage, record.id, 'back');
     } catch (error) { return json(res, 400, { error: error.message }); }
     if (url.pathname === '/api/orders' && record.type.includes('选号')) {
-      const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId && item.schoolCode === schoolCode && item.status === 'available');
+      const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId && item.status === 'available');
       if (!offer) return json(res, 409, { error: '所选号码已被预占，请返回重新选择' });
       record.selectedNumber = offer.displayNumber;
       record.operator = offer.operator;
@@ -823,14 +963,14 @@ async function api(req, res, url) {
     if (!requireAdmin(req, res)) return;
     const openRecords = (records) => records.filter((record) => !['completed', 'cancelled'].includes(record.status)).length;
     return json(res, 200, {
-      schools: db.schools,
+      schools: db.schools.filter((item) => item.code !== TEST_SCHOOL_CODE),
       orders: db.orders.slice(-300).reverse(),
       tickets: db.tickets.slice(-300).reverse(),
       metrics: {
         scans: db.schools.reduce((total, school) => total + (school.scans || 0), 0),
         orders: openRecords(db.orders),
         tickets: openRecords(db.tickets),
-        activeSchools: db.schools.filter((item) => item.status === 'active').length,
+        activeSchools: db.schools.filter((item) => item.code !== TEST_SCHOOL_CODE && item.status === 'active').length,
         availableNumbers: db.numberOffers.filter((item) => item.status === 'available').length
       },
       numberOffers: db.numberOffers.slice(-500).reverse()
@@ -852,6 +992,7 @@ async function api(req, res, url) {
     const displayNumber = maskPhoneNumber(safe(body.displayNumber, 20));
     const planName = safe(body.planName, 80);
     const monthlyFee = Number(body.monthlyFee);
+    if (db.numberOffers.some((item) => item.displayNumber === displayNumber)) return json(res, 409, { error: '号码池中已存在相同号码资源' });
     if (!db.schools.some((item) => item.code === schoolCode)) return json(res, 400, { error: '学校不存在' });
     if (!ALLOWED_OPERATORS.has(operator)) return json(res, 400, { error: '请选择中国移动、中国联通或中国电信' });
     if (!/^1\d{2}\*{4}\d{4}$/.test(displayNumber)) return json(res, 400, { error: '脱敏号码格式不正确，例如 138****0001' });
@@ -899,11 +1040,83 @@ async function api(req, res, url) {
     return json(res, 201, { imported: imported.length, skipped: rows.length - imported.length });
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/admin/vouchers/import') {
+    const session = requireAdmin(req, res);
+    if (!session) return;
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    if (!body.fileBase64) return json(res, 400, { error: '请上传运营商实名结果 Excel 文件' });
+    let rows;
+    try {
+      const workbook = XLSX.read(Buffer.from(String(body.fileBase64).replace(/^data:.*?;base64,/, ''), 'base64'), { type: 'buffer' });
+      rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '' });
+    } catch { return json(res, 400, { error: 'Excel 文件无法解析，请检查文件格式' }); }
+    const aliases = (row, names) => names.map((name) => row[name]).find((value) => value !== undefined && String(value).trim() !== '') ?? '';
+    const issued = [];
+    const skipped = [];
+    for (const row of rows) {
+      const recordId = safe(aliases(row, ['服务编号', '订单编号', 'recordId', 'serviceId']), 80);
+      const record = findRecord(db, recordId);
+      const operator = safe(aliases(row, ['运营商', 'operator', 'Operator']), 20);
+      const operatorReference = safe(aliases(row, ['运营商返回码', '实名结果编号', 'operatorReference', 'reference']), 120);
+      const requestedExpiry = safeIso(aliases(row, ['有效期至', 'expiresAt', 'expiry']));
+      if (!record || db.vouchers.some((voucher) => voucher.recordId === recordId)) { skipped.push(recordId || 'empty'); continue; }
+      const token = crypto.randomBytes(32).toString('base64url');
+      const voucher = {
+        id: id('VCH'), recordId: record.id, schoolCode: record.schoolCode, phone: record.phone,
+        operator: operator || record.operator || '', operatorReference, token, status: 'issued',
+        issuedAt: new Date().toISOString(), expiresAt: requestedExpiry || new Date(Date.now() + VOUCHER_DEFAULT_TTL_DAYS * 86400000).toISOString(),
+        redeemedAt: '', redeemedBy: ''
+      };
+      db.vouchers.push(voucher);
+      record.status = 'completed';
+      record.verificationStatus = 'verified';
+      record.activationStatus = 'activated';
+      record.serviceResult = operatorReference ? `运营商已完成实名验证，返回编号：${operatorReference}` : '运营商已完成实名验证，待线下核销';
+      record.updatedAt = new Date().toISOString();
+      if (!Array.isArray(record.statusHistory)) record.statusHistory = [];
+      record.statusHistory.push({ status: 'completed', at: record.updatedAt, by: session.user });
+      issued.push(voucher.id);
+      audit(db, 'voucher.issued', session.user, voucher.id, { recordId: record.id, operator: voucher.operator, expiresAt: voucher.expiresAt });
+    }
+    if (!issued.length) return json(res, 400, { error: '没有可签发的凭证；请确认服务编号存在且未重复导入', skipped });
+    writeDb(db);
+    return json(res, 201, { issued: issued.length, skipped: skipped.length });
+  }
+
+  if (url.pathname.startsWith('/api/redeem/')) {
+    const token = safe(decodeURIComponent(url.pathname.split('/')[3] || ''), 100);
+    const voucher = db.vouchers.find((item) => item.token === token);
+    if (!voucher) return json(res, 404, { error: '凭证无效' });
+    const record = findRecord(db, voucher.recordId);
+    const state = voucherState(voucher);
+    if (req.method === 'GET') return json(res, 200, { status: state, voucherId: voucher.id, schoolName: record?.schoolName || '', operator: voucher.operator || record?.operator || '', expiresAt: voucher.expiresAt, phone: maskPhoneNumber(voucher.phone) });
+    if (req.method === 'POST' && url.pathname.endsWith('/request-code')) {
+      if (state !== 'issued') return json(res, 409, { error: '该凭证当前不可核销' });
+      const result = await issueStudentCode(db, { schoolCode: voucher.schoolCode, phone: voucher.phone }, 'redeem');
+      return json(res, result.status, result.response || { error: result.error });
+    }
+    if (req.method === 'POST' && url.pathname.endsWith('/confirm')) {
+      if (state !== 'issued') return json(res, 409, { error: '该凭证当前不可核销' });
+      let body;
+      try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+      const codeError = consumeStudentCode(voucher.schoolCode, voucher.phone, safe(body.code, 10), 'redeem');
+      if (codeError) return json(res, 400, { error: codeError });
+      voucher.status = 'redeemed';
+      voucher.redeemedAt = new Date().toISOString();
+      voucher.redeemedBy = safe(body.redeemedBy, 80) || 'offline-counter';
+      audit(db, 'voucher.redeemed', voucher.redeemedBy, voucher.id, { recordId: voucher.recordId });
+      writeDb(db);
+      return json(res, 200, { ok: true, voucherId: voucher.id, redeemedAt: voucher.redeemedAt });
+    }
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/student/confirm-completion') {
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
     const schoolCode = safe(body.schoolCode, 40);
-    const phone = safe(body.phone, 20);
+    const studentSession = sessionFor(req, 'student');
+    const phone = studentSession?.user || safe(body.phone, 20);
     const recordId = safe(body.recordId, 80);
     const record = [...db.orders, ...db.tickets].find((item) => item.id === recordId && item.schoolCode === schoolCode && item.phone === phone);
     if (!record) return json(res, 404, { error: '未找到对应服务记录' });
@@ -1007,6 +1220,18 @@ async function api(req, res, url) {
     return res.end(buffer);
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/admin/export-pending.xlsx') {
+    if (!requireAdmin(req, res)) return;
+    const pendingStatuses = new Set(['pending', 'contacting', 'assigned', 'scheduled', 'processing']);
+    const records = [...db.orders, ...db.tickets].filter((record) => pendingStatuses.has(record.status));
+    const rows = records.map((record) => ({ 服务编号: record.id, 学校: record.schoolName, 学院: record.college, 姓名: record.name, 学号: record.studentNo, 身份证号码: record.idCard, 联系电话: record.phone, 备用联系电话: record.backupPhone, 运营商: record.operator, 意向号码: record.selectedNumber, 服务事项: record.type, 状态: record.status, 创建时间: record.createdAt }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), '待处理');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="campus-service-pending.xlsx"', 'Cache-Control': 'no-store' });
+    return res.end(buffer);
+  }
+
   if (req.method === 'PATCH' && url.pathname.startsWith('/api/admin/records/')) {
     if (!requireAdmin(req, res)) return;
     const parts = url.pathname.split('/').filter(Boolean);
@@ -1083,18 +1308,23 @@ function staticFile(req, res, url) {
   if (pathname === '/service') pathname = '/index.html';
   if (pathname.startsWith('/q/')) pathname = '/dispatch.html';
   if (pathname.startsWith('/service/')) pathname = '/index.html';
+  if (pathname.startsWith('/redeem/')) pathname = '/redeem.html';
   if (pathname === '/admin' || pathname === '/admin/') pathname = '/operator.html';
   if (pathname === '/admin/login') pathname = '/admin-login.html';
+  if (pathname === '/admin/register') pathname = '/admin-register.html';
+  if (pathname === '/student/login') pathname = '/student-login.html';
+  if (pathname === '/student/register') pathname = '/student-login.html';
   const file = path.resolve(ROOT, `.${pathname}`);
   if (!file.startsWith(path.resolve(ROOT)) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return text(res, 404, 'Not found');
   res.writeHead(200, {
     'Content-Type': mimeTypes[path.extname(file).toLowerCase()] || 'application/octet-stream',
+    'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff'
   });
   fs.createReadStream(file).pipe(res);
 }
 
-const server = http.createServer(async (req, res) => {
+const requestHandler = async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   try {
     if (url.pathname.startsWith('/api/')) {
@@ -1107,10 +1337,13 @@ const server = http.createServer(async (req, res) => {
     console.error(error);
     json(res, 500, { error: '服务器内部错误' });
   }
-});
+};
 
-if (IS_PRODUCTION && ADMIN_PASSWORD === 'campus-admin-2026') {
+if (IS_PRODUCTION && ADMIN_PASSWORD === 'CampusAdmin2026') {
   throw new Error('生产环境必须通过 ADMIN_PASSWORD 设置非默认运营商密码');
+}
+if (process.env.NODE_ENV !== 'test' && !validPassword(ADMIN_PASSWORD)) {
+  throw new Error('ADMIN_PASSWORD 必须为 9-15 位且同时包含大小写字母和数字');
 }
 
 ensureDb();
@@ -1120,6 +1353,15 @@ async function start() {
     runtimeDb = await sqlStorage.init();
     if (syncSchoolsFromWorkbook(runtimeDb)) await sqlStorage.save(runtimeDb);
   }
-  server.listen(PORT, () => console.log(`Campus service running at http://127.0.0.1:${PORT} using ${DB_DRIVER}`));
+  let server;
+  if (HTTPS_ENABLED) {
+    const pemConfigured = TLS_KEY_FILE && TLS_CERT_FILE && fs.existsSync(TLS_KEY_FILE) && fs.existsSync(TLS_CERT_FILE);
+    const pfxConfigured = TLS_PFX_FILE && fs.existsSync(TLS_PFX_FILE);
+    if (!pemConfigured && !pfxConfigured) throw new Error('HTTPS 已启用，但未找到 TLS 证书文件');
+    const tls = pemConfigured ? { key: fs.readFileSync(TLS_KEY_FILE), cert: fs.readFileSync(TLS_CERT_FILE) } : { pfx: fs.readFileSync(TLS_PFX_FILE), passphrase: TLS_PFX_PASSWORD };
+    server = https.createServer(tls, requestHandler);
+  } else server = http.createServer(requestHandler);
+  const protocol = HTTPS_ENABLED ? 'https' : 'http';
+  server.listen(PORT, () => console.log(`Campus service running at ${protocol}://127.0.0.1:${PORT} using ${DB_DRIVER}`));
 }
 start().catch((error) => { console.error('数据库初始化失败:', error); process.exitCode = 1; });

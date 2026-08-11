@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>线下领卡核销</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="panel">
+        <p class="eyebrow">线下领卡</p>
+        <h1>凭证核销</h1>
+        <p id="voucherSummary">正在验证凭证…</p>
+        <div id="redeemForm" hidden>
+          <button class="primary-button" id="sendRedeemCode" type="button">向原手机号发送验证码</button>
+          <label>短信验证码<input id="redeemCode" inputmode="numeric" maxlength="6" placeholder="6 位验证码" /></label>
+          <label>核销人员（可选）<input id="redeemedBy" maxlength="80" placeholder="工号或姓名" /></label>
+          <button class="primary-button" id="confirmRedeem" type="button">确认发卡并核销</button>
+        </div>
+      </section>
+    </main>
+    <script src="/redeem.js"></script>
+  </body>
+</html>

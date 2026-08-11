@@ -16,12 +16,12 @@
           <a href="#schoolQr">学校二维码</a>
           <a href="#records">订单与工单</a>
         </nav>
-        <div class="admin-side-note"><strong>数据权限提示</strong><p>学校仅提供核验数据，不进入本后台，也不查看学生服务记录。</p></div>
+        <div class="admin-side-note"><strong>数据权限提示</strong><p>学校和学院仅用于登记分类；后台仅供授权运营商人员处理业务信息。</p></div>
       </aside>
       <main class="admin-main">
         <header class="admin-header" id="overview">
           <div><p class="eyebrow">运营商端</p><h1>校园通信服务管理</h1><p>统一处理学校二维码、预约订单与宽带维护工单。</p></div>
-          <div class="admin-header-actions"><button class="outline-button" id="exportButton">导出记录</button><button class="primary-button" id="newSchoolButton">新增学校二维码</button><button class="text-button" id="logoutButton">退出</button></div>
+          <div class="admin-header-actions"><button class="outline-button" id="refreshButton">刷新数据</button><button class="outline-button" id="exportButton">导出全部</button><button class="outline-button" id="exportPendingButton">导出待处理</button><button class="text-button" id="logoutButton">退出</button></div>
         </header>
 
         <section class="metric-grid admin-metrics">
@@ -37,8 +37,15 @@
           <div class="number-offer-list" id="numberOfferList"></div>
         </section>
 
+        <section class="admin-section" id="voucherFulfillment">
+          <div class="section-title"><div><p class="eyebrow">实名完成</p><h2>签发线下领卡凭证</h2></div></div>
+          <p>导入运营商实名认证完成文件。首行必须包含“服务编号”，可选“运营商”“运营商返回码”“有效期至”。系统只为每个服务编号签发一次二维码凭证。</p>
+          <label>运营商结果 Excel<input type="file" id="voucherImportFile" accept=".xlsx,.xls,.csv" /></label>
+          <button class="outline-button" type="button" id="importVouchersButton">导入并签发凭证</button>
+        </section>
+
         <section class="admin-section" id="schoolQr">
-          <div class="section-title"><div><p class="eyebrow">二维码管理</p><h2>统一二维码与兼容入口</h2></div><p>正式推广使用统一二维码；学校专属二维码仅保留作兼容和内部管理。</p></div>
+          <div class="section-title"><div><p class="eyebrow">二维码管理</p><h2>统一服务二维码</h2></div><p>所有学校共用这一张二维码；学校和学院只在学生填写信息时选择，不再生成学校专属二维码。</p></div>
           <div class="school-list" id="schoolList"></div>
         </section>
 
@@ -78,7 +85,7 @@
           <label>学校名称<input name="name" required placeholder="例如：XX大学" /></label>
           <label>学校代码<input name="code" required pattern="[A-Za-z0-9-]{3,40}" placeholder="例如：XXU-2026" /><small>仅可使用字母、数字和短横线</small></label>
           <label>服务电话<input name="servicePhone" required value="10086" /></label>
-          <p class="modal-intro">当前入口用于学生信息收集，不接入学校资格核验接口。</p>
+          <p class="modal-intro">学校资料仅用于学生填写时进行分类，不调用学校检测或查询接口。</p>
           <button class="primary-button" type="submit">生成学校二维码</button>
         </form>
       </section>

@@ -1,5 +1,19 @@
 const form = document.getElementById('loginForm');
 const toast = document.getElementById('toast');
+const phoneInput = form.elements.username;
+const passwordInput = form.elements.password;
+phoneInput.name = 'phone';
+phoneInput.type = 'tel';
+phoneInput.inputMode = 'numeric';
+phoneInput.maxLength = 11;
+phoneInput.pattern = '1[0-9]{10}';
+phoneInput.placeholder = '请输入已授权手机号';
+phoneInput.closest('label').firstChild.textContent = '授权手机号';
+passwordInput.minLength = 9;
+passwordInput.maxLength = 15;
+passwordInput.pattern = '(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])[A-Za-z0-9]{9,15}';
+passwordInput.placeholder = '9-15位，含大小写字母和数字';
+passwordInput.closest('label').firstChild.textContent = '密码';
 
 function showToast(message, isError = false) {
   toast.textContent = message;
