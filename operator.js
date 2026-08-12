@@ -178,6 +178,7 @@ function openRecord(id, category) {
       <div><dt>身份证号码</dt><dd>${escapeHtml(record.idCard || '未填写')}</dd></div>
       <div><dt>联系电话</dt><dd>${escapeHtml(record.phone)}</dd></div>
       <div><dt>备用联系电话</dt><dd>${escapeHtml(record.backupPhone || '未填写')}</dd></div>
+      ${isNumberOrder ? `<div><dt>收货人</dt><dd>${escapeHtml(record.deliveryRecipient || '未填写')}</dd></div><div><dt>收货联系号码</dt><dd>${escapeHtml(record.deliveryPhone || '未填写')}</dd></div>` : ''}
       <div><dt>学校</dt><dd>${escapeHtml(record.schoolName)}</dd></div>
       <div><dt>${isNumberOrder ? '收货地址' : '服务地址'}</dt><dd>${escapeHtml(record.address || '未填写')}</dd></div>
       ${isNumberOrder ? '' : `<div><dt>期望时间</dt><dd>${escapeHtml(record.appointment)}</dd></div>`}

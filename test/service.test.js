@@ -126,6 +126,8 @@ async function createOrder(phone, overrides = {}) {
       phone,
       code,
       address: '内测宿舍 1 栋 101',
+      deliveryRecipient: '内测收货人',
+      deliveryPhone: '13700000009',
       appointment: '尽快联系',
       detail: '自动化测试订单',
       type: '校园网账号预约',
@@ -311,10 +313,12 @@ test('选号订单预占号码，取消后自动释放', async () => {
   const missingAddress = await createOrder('13700000006', { type: '新生选号预约', selectedOfferId: before.body.offers[0].id, address: '' });
   assert.equal(missingAddress.response.status, 400);
   assert.match(missingAddress.body.error, /收货地址/);
-  const created = await createOrder(TEST_PHONES[1], { type: '新生选号预约', selectedOfferId: before.body.offers[0].id, fulfillmentMethod: '快递配送' });
+  const created = await createOrder(TEST_PHONES[1], { type: '新生选号预约', selectedOfferId: before.body.offers[0].id, fulfillmentMethod: '快递配送', deliveryRecipient: '内测收货人', deliveryPhone: '13700000009' });
   assert.equal(created.response.status, 201);
   const storedAfterCreate = JSON.parse(fs.readFileSync(path.join(tempDir, 'db.json'), 'utf8'));
   assert.equal(storedAfterCreate.orders.find((item) => item.id === created.body.record.id).address, '内测宿舍 1 栋 101');
+  assert.equal(storedAfterCreate.orders.find((item) => item.id === created.body.record.id).deliveryRecipient, '内测收货人');
+  assert.equal(storedAfterCreate.orders.find((item) => item.id === created.body.record.id).deliveryPhone, '13700000009');
   const reserved = await request('/api/schools/XXU-2026/numbers');
   assert.equal(reserved.body.offers.length, before.body.offers.length - 1);
   const cancelled = await updateRecord(await adminCookie(), created.body.record.id, { status: 'cancelled' });
@@ -332,7 +336,7 @@ test('并发提交同一号码时只允许一个订单预占成功', async () =>
   const secondCode = await testCode(secondPhone, 'submit');
   const order = (phone, code, studentNo) => request('/api/orders', {
     method: 'POST',
-    body: { schoolCode: 'XXU-2026', name: '并发测试学生', studentNo, idCard: idCardFor(phone), college: '信息工程学院', idCardFrontImage: TEST_IMAGE, idCardBackImage: TEST_IMAGE, phone, code, address: '内测宿舍', detail: '并发预占测试', type: '新生选号预约', selectedOfferId, fulfillmentMethod: '迎新点办理', serviceConsent: true }
+    body: { schoolCode: 'XXU-2026', name: '并发测试学生', studentNo, idCard: idCardFor(phone), college: '信息工程学院', idCardFrontImage: TEST_IMAGE, idCardBackImage: TEST_IMAGE, phone, code, address: '内测宿舍', deliveryRecipient: '并发收货人', deliveryPhone: '13700000009', detail: '并发预占测试', type: '新生选号预约', selectedOfferId, fulfillmentMethod: '迎新点办理', serviceConsent: true }
   });
   const results = await Promise.all([
     order(firstPhone, firstCode, 'CONCURRENT-01'),

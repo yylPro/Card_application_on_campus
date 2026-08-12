@@ -217,6 +217,8 @@ function normalizeDb(db) {
     if (!record.idCard) record.idCard = '';
     if (!record.college) record.college = '';
     if (!record.backupPhone) record.backupPhone = '';
+    if (!record.deliveryRecipient) record.deliveryRecipient = '';
+    if (!record.deliveryPhone) record.deliveryPhone = '';
     if (!record.idCardFrontFile) record.idCardFrontFile = '';
     if (!record.idCardBackFile) record.idCardBackFile = '';
     if (!record.passwordHash) record.passwordHash = '';
@@ -1119,10 +1121,10 @@ async function api(req, res, url) {
       const records = [...db.orders, ...db.tickets]
         .filter((record) => record.phone === phone && (studentSession || verifyPassword(body.password, record.passwordHash)))
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
+        .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
           const record = findRecord(db, id);
           const voucher = db.vouchers.find((item) => item.recordId === id);
-          return { id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
+          return { id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
         });
       return json(res, 200, { records: await Promise.all(records) });
     }
@@ -1134,10 +1136,10 @@ async function api(req, res, url) {
     const records = [...db.orders, ...db.tickets]
       .filter((record) => record.schoolCode === schoolCode && record.phone === phone)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
+      .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
         const record = findRecord(db, id);
         const voucher = db.vouchers.find((item) => item.recordId === id);
-        return { id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
+        return { id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
       });
     return json(res, 200, { records: await Promise.all(records) });
   }
@@ -1160,6 +1162,8 @@ async function api(req, res, url) {
       college: safe(body.college, 80),
       phone: studentSession?.user || safe(body.phone, 20),
       backupPhone: safe(body.backupPhone, 20),
+      deliveryRecipient: safe(body.deliveryRecipient, 40),
+      deliveryPhone: safe(body.deliveryPhone, 20),
       passwordHash: '',
       address: safe(body.address, 160),
       appointment: safe(body.appointment, 60) || '尽快联系',
@@ -1208,6 +1212,8 @@ async function api(req, res, url) {
     if (!record.serviceConsent) return json(res, 400, { error: '请先同意信息收集和后续联系说明' });
     const isNumberOrder = url.pathname === '/api/orders' && record.type.includes('选号');
     if (isNumberOrder && !record.address) return json(res, 400, { error: '请填写完整的收货地址' });
+    if (isNumberOrder && !record.deliveryRecipient) return json(res, 400, { error: '请填写收货人' });
+    if (isNumberOrder && !validPhone(record.deliveryPhone)) return json(res, 400, { error: '收货联系号码应为正确的 11 位手机号码' });
     let idImages;
     try {
       idImages = { front: parseIdImage(body.idCardFrontImage), back: parseIdImage(body.idCardBackImage) };

@@ -129,6 +129,10 @@
             <label>意向号码<input type="hidden" name="selectedOfferId" id="selectedOfferId" required /><div class="number-summary"><strong id="selectedNumberSummary">尚未选择号码</strong><button type="button" class="outline-button" id="openNumberPickerButton">进入选号</button></div><small>提交后号码会立即预占；取消订单后号码才会回到号码池。</small></label>
           </div>
           <label id="deliveryAddressField" hidden>收货地址<input name="address" maxlength="160" autocomplete="street-address" placeholder="请填写省、市、区、街道及详细门牌号" /><small>仅用于号码卡配送，不作为线下实名认证地址。</small></label>
+          <div class="form-row" id="deliveryContactFields" hidden>
+            <label>收货人<input name="deliveryRecipient" maxlength="40" autocomplete="shipping name" placeholder="请输入收货人姓名" /></label>
+            <label>收货联系号码<input name="deliveryPhone" inputmode="tel" autocomplete="shipping tel" placeholder="请输入收货联系手机号" /></label>
+          </div>
           <label id="appointmentField">希望服务时间<select name="appointment"><option value="尽快联系">尽快联系</option><option value="上午 09:00 - 12:00">上午 09:00 - 12:00</option><option value="下午 14:00 - 18:00">下午 14:00 - 18:00</option><option value="晚上 18:00 - 20:30">晚上 18:00 - 20:30</option></select></label>
           <label>需求说明<textarea name="detail" required placeholder="请描述具体需求，例如希望办理的套餐或故障情况"></textarea></label>
           <label class="consent"><input name="serviceConsent" type="checkbox" required /><span>我已阅读并同意将以上信息用于校园通信服务信息收集和后续联系。</span></label>
