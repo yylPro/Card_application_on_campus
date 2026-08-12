@@ -413,6 +413,9 @@ test('线下实体端使用授权手机号注册，且仅凭特征码和身份�
   const assignedOverview = await request('/api/admin/overview', { cookie: admin });
   const assignedRecord = assignedOverview.body.orders.find((item) => item.id === created.body.record.id);
   assert.equal(assignedOverview.body.offlineSettings.verificationAddress, '东校区迎新服务点 A03');
+  assert.equal(assignedRecord.idCard, idCard);
+  assert.equal(assignedRecord.college, '信息工程学院');
+  assert.equal(assignedRecord.backupPhone, '');
   assert.equal(assignedRecord.offlineLocation, '东校区迎新服务点 A03');
   assert.match(assignedRecord.offlineFeatureCode, /^[A-Z0-9_-]{8}$/);
   assert.equal((await updateRecord(admin, created.body.record.id, { activationStatus: 'activated' })).response.status, 403);

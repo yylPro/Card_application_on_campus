@@ -174,7 +174,10 @@ function openRecord(id, category) {
   document.getElementById('recordDetail').innerHTML = `
     <dl>
       <div><dt>学生</dt><dd>${escapeHtml(record.name)}（${escapeHtml(record.studentNo)}）</dd></div>
-      <div><dt>手机</dt><dd>${escapeHtml(record.phone)}</dd></div>
+      <div><dt>学院</dt><dd>${escapeHtml(record.college || '未填写')}</dd></div>
+      <div><dt>身份证号码</dt><dd>${escapeHtml(record.idCard || '未填写')}</dd></div>
+      <div><dt>联系电话</dt><dd>${escapeHtml(record.phone)}</dd></div>
+      <div><dt>备用联系电话</dt><dd>${escapeHtml(record.backupPhone || '未填写')}</dd></div>
       <div><dt>学校</dt><dd>${escapeHtml(record.schoolName)}</dd></div>
       <div><dt>${isNumberOrder ? '收货地址' : '服务地址'}</dt><dd>${escapeHtml(record.address || '未填写')}</dd></div>
       ${isNumberOrder ? '' : `<div><dt>期望时间</dt><dd>${escapeHtml(record.appointment)}</dd></div>`}
