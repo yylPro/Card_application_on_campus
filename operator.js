@@ -134,6 +134,13 @@ function renderNumberOffers(offers) {
 
 function renderOverview(data) {
   overview = data;
+  const addressSubmit = document.querySelector('#offlineSettingsForm button[type="submit"]');
+  if (addressSubmit) addressSubmit.textContent = '确认并覆盖地址';
+  const serviceToggle = document.getElementById('serviceToggleButton');
+  const serviceMeta = document.getElementById('serviceStatusMeta');
+  const serviceEnabled = data.serviceStatus?.enabled !== false;
+  if (serviceToggle) serviceToggle.textContent = serviceEnabled ? '关闭三端服务' : '重新启用三端服务';
+  if (serviceMeta) serviceMeta.textContent = serviceEnabled ? '三端服务运行中' : '三端服务已关闭，学生端和线下实体端不可用';
   const offlineAddress = data.offlineSettings?.verificationAddress || '';
   document.getElementById('offlineSettingsForm').elements.verificationAddress.value = offlineAddress;
   document.getElementById('offlineSettingsMeta').textContent = offlineAddress
@@ -216,7 +223,7 @@ function openRecord(id, category) {
   openModal('recordModal');
 }
 
-document.getElementById('newSchoolButton').addEventListener('click', () => openModal('schoolModal'));
+document.getElementById('newSchoolButton')?.addEventListener('click', () => openModal('schoolModal'));
 document.getElementById('newNumberOfferButton').addEventListener('click', () => openModal('numberOfferModal'));
 document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', closeModals));
 document.querySelectorAll('.modal-backdrop').forEach((modal) => {
@@ -239,7 +246,7 @@ document.getElementById('offlineSettingsForm').addEventListener('submit', async 
   try {
     const result = await api('/api/admin/offline-settings', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ verificationAddress: form.elements.verificationAddress.value.trim() })
+      body: JSON.stringify({ action: 'set', verificationAddress: form.elements.verificationAddress.value.trim() })
     });
     showToast(`全局线下地址已保存，已同步 ${result.affectedOrders} 个待激活选号订单`);
     await loadOverview();
@@ -248,6 +255,27 @@ document.getElementById('offlineSettingsForm').addEventListener('submit', async 
   } finally {
     button.disabled = false;
   }
+});
+document.getElementById('clearOfflineAddressButton')?.addEventListener('click', async (event) => {
+  if (!window.confirm('清空后，尚未激活订单的线下地址和特征码也会撤销，确定继续吗？')) return;
+  event.currentTarget.disabled = true;
+  try {
+    const result = await api('/api/admin/offline-settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'clear' }) });
+    showToast(`线下实名认证地址已清空，已同步 ${result.affectedOrders} 个待激活选号订单`);
+    await loadOverview();
+  } catch (error) { showToast(error.message, true); }
+  finally { event.currentTarget.disabled = false; }
+});
+document.getElementById('serviceToggleButton')?.addEventListener('click', async (event) => {
+  const enabled = overview?.serviceStatus?.enabled !== false;
+  if (enabled && !window.confirm('关闭后学生端和线下实体端将显示服务不可用，确定继续吗？')) return;
+  event.currentTarget.disabled = true;
+  try {
+    await api('/api/admin/service-status', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !enabled }) });
+    showToast(!enabled ? '三端服务已重新启用' : '三端服务已关闭');
+    await loadOverview();
+  } catch (error) { showToast(error.message, true); }
+  finally { event.currentTarget.disabled = false; }
 });
 document.getElementById('refreshButton')?.addEventListener('click', async (event) => {
   event.currentTarget.disabled = true;
@@ -294,7 +322,7 @@ document.getElementById('recordsTable').addEventListener('click', (event) => {
   if (button) openRecord(button.dataset.record, button.dataset.category);
 });
 
-document.getElementById('schoolForm').addEventListener('submit', async (event) => {
+document.getElementById('schoolForm')?.addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   const values = Object.fromEntries(new FormData(form).entries());
@@ -393,7 +421,7 @@ document.getElementById('importNumberOffersButton').addEventListener('click', as
   reader.readAsDataURL(file);
 });
 
-document.getElementById('importVouchersButton').addEventListener('click', async () => {
+document.getElementById('importVouchersButton')?.addEventListener('click', async () => {
   const file = document.getElementById('voucherImportFile').files[0];
   if (!file) return showToast('请选择运营商实名结果 Excel 文件', true);
   const reader = new FileReader();

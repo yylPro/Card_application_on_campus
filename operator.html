@@ -23,6 +23,7 @@
         <header class="admin-header" id="overview">
           <div><p class="eyebrow">运营商端</p><h1>校园通信服务管理</h1><p>导入号码、管理选号订单，并向学生派发线下实名地址与特征码。</p></div>
           <div class="admin-header-actions"><button class="outline-button" id="refreshButton">刷新数据</button><button class="outline-button" id="exportButton">导出全部</button><button class="outline-button" id="exportPendingButton">导出待处理</button><button class="outline-button" id="exportActivatedButton">导出已激活</button><button class="text-button" id="logoutButton">退出</button></div>
+          <div class="admin-header-actions"><button class="outline-button" id="serviceToggleButton">关闭三端服务</button><small id="serviceStatusMeta">三端服务运行中</small></div>
         </header>
 
         <section class="metric-grid admin-metrics">
@@ -36,8 +37,8 @@
         <section class="admin-section" id="offlineSettings">
           <div class="section-title"><div><p class="eyebrow">全局办理设置</p><h2>线下实名认证地址</h2></div><p>该地址适用于全部尚未激活及后续新增的选号订单，每个学生仍使用各自唯一的特征码。</p></div>
           <form class="offline-settings-form" id="offlineSettingsForm">
-            <label>可办理线下实名认证的地址<input name="verificationAddress" maxlength="160" required placeholder="例如：东校区大学生活动中心一楼运营商服务点" /></label>
-            <button class="primary-button" type="submit">保存全局地址</button>
+            <label>可办理线下实名认证的地址<input name="verificationAddress" maxlength="160" placeholder="例如：东校区大学生活动中心一楼运营商服务点" /></label>
+            <div class="form-actions"><button class="primary-button" type="submit">确认并覆盖地址</button><button class="outline-button" type="button" id="clearOfflineAddressButton">清空地址</button></div>
           </form>
           <small class="settings-meta" id="offlineSettingsMeta">尚未设置线下实名认证地址</small>
         </section>
@@ -47,7 +48,7 @@
           <div class="number-offer-list" id="numberOfferList"></div>
         </section>
 
-        <section class="admin-section" id="voucherFulfillment">
+        <section class="admin-section" id="voucherFulfillment" hidden>
           <div class="section-title"><div><p class="eyebrow">实名完成</p><h2>签发线下领卡凭证</h2></div></div>
           <p>导入运营商实名认证完成文件。首行必须包含“服务编号”，可选“运营商”“运营商返回码”“有效期至”。系统只为每个服务编号签发一次二维码凭证。</p>
           <label>运营商结果 Excel<input type="file" id="voucherImportFile" accept=".xlsx,.xls,.csv" /></label>
