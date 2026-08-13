@@ -395,10 +395,6 @@ document.getElementById('nextServiceStepButton')?.addEventListener('click', () =
   const missing = required.find((name) => { const field = serviceForm.elements[name]; return !field || (field.type === 'file' ? !field.files.length : !String(field.value || '').trim()); });
   if (missing) return showToast('请先完成学生信息、学校、学院、身份证和联系电话填写', true);
   if (serviceForm.elements.backupPhone.value && !/^1\d{10}$/.test(serviceForm.elements.backupPhone.value.trim())) return showToast('备用联系电话格式不正确', true);
-  if (selectedService.title.includes('选号')) {
-    if (!serviceForm.elements.deliveryRecipient.value.trim()) return showToast('请填写收货人', true);
-    if (!/^1\d{10}$/.test(serviceForm.elements.deliveryPhone.value.trim())) return showToast('收货联系号码必须为 11 位数字', true);
-  }
   document.getElementById('studentInfoStep').hidden = true;
   document.getElementById('serviceOptionsStep').hidden = false;
 });
