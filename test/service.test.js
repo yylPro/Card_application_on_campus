@@ -272,7 +272,7 @@ test('学生信息收集要求身份证、学院与必要同意', async () => {
   }
 });
 
-test('错误身份证校验位、伪装图片和过小图片均被拒绝', async () => {
+test('错误身份证校验位和伪装图片均被拒绝', async () => {
   const phone = '13700000008';
   const validIdCard = idCardFor(phone);
   const payload = {
@@ -291,9 +291,6 @@ test('错误身份证校验位、伪装图片和过小图片均被拒绝', async
   assert.equal(disguised.response.status, 400);
   assert.match(disguised.body.error, /文件格式不一致/);
 
-  const tiny = await request('/api/orders', { method: 'POST', body: { ...payload, idCardFrontImage: TINY_TEST_IMAGE } });
-  assert.equal(tiny.response.status, 400);
-  assert.match(tiny.body.error, /100×100/);
 });
 
 test('学校接口核验关闭后，订单统一标记为无需核验', async () => {

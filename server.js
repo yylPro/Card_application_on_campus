@@ -456,9 +456,6 @@ function parseIdImage(value) {
     ? 'image/png'
     : buffer[0] === 0xff && buffer[1] === 0xd8 ? 'image/jpeg' : '';
   if (!detectedMime || detectedMime !== match[1]) throw new Error('身份证图片内容与文件格式不一致');
-  const dimensions = detectedMime === 'image/png' ? pngDimensions(buffer) : jpegDimensions(buffer);
-  if (!dimensions) throw new Error('身份证图片文件已损坏或无法识别');
-  if (dimensions.width < 100 || dimensions.height < 100) throw new Error('身份证图片尺寸不能小于 100×100 像素');
   return { buffer, mime: detectedMime };
 }
 
