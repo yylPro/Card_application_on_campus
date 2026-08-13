@@ -306,7 +306,10 @@ function readDb() {
 function writeDb(db) {
   if (sqlStorage) {
     runtimeDb = db;
-    dbSaveQueue = dbSaveQueue.then(() => sqlStorage.save(db)).catch((error) => { console.error('数据库保存失败:', error.message); });
+    dbSaveQueue = dbSaveQueue.catch(() => {}).then(() => sqlStorage.save(db));
+    // Keep fire-and-forget callers observable in server logs while allowing
+    // endpoints that await this function to return a real persistence error.
+    dbSaveQueue.catch((error) => { console.error('数据库保存失败:', error.message); });
     return dbSaveQueue;
   }
   const tempFile = `${DB_FILE}.${process.pid}.${Date.now()}.tmp`;
@@ -1311,7 +1314,7 @@ async function api(req, res, url) {
       }
     }
     audit(db, action === 'clear' ? 'offline-address.cleared' : 'offline-address.updated', session.user, 'global-settings', { affectedOrders });
-    writeDb(db);
+    await writeDb(db);
     return json(res, 200, { verificationAddress: db.settings.offlineVerificationAddress, updatedAt, affectedOrders });
   }
 

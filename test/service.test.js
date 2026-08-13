@@ -112,9 +112,9 @@ async function offlineCookie() {
 
 async function createOrder(phone, overrides = {}) {
   const schoolCode = overrides.schoolCode || 'XXU-2026';
-  const code = await testCode(phone, 'submit', schoolCode);
+  const code = overrides.cookie ? '' : await testCode(phone, 'submit', schoolCode);
   const { response, body } = await request('/api/orders', {
-    method: 'POST',
+    method: 'POST', cookie: overrides.cookie,
     body: {
       schoolCode,
       name: '内测学生',
@@ -515,6 +515,39 @@ test('默认线下地址自动分配给选号订单，之后修改或清空默�
   const stillAssigned = afterClear.body.orders.find((item) => item.id === created.body.record.id);
   assert.equal(stillAssigned.offlineLocation, initialAddress);
   assert.equal(stillAssigned.offlineFeatureCode, featureCode);
+});
+
+test('地址为空时学生端只显示等待分配，运营商补填地址后才显示地址和特征码', async () => {
+  const admin = await adminCookie();
+  const cleared = await request('/api/admin/offline-settings', { method: 'PATCH', cookie: admin, body: { action: 'clear' } });
+  assert.equal(cleared.response.status, 200);
+
+  const offers = await request('/api/schools/XXU-2026/numbers');
+  const phone = '13700000006';
+  const registration = await request('/api/student/register', {
+    method: 'POST', body: { phone, password: 'CampusPass1', confirmPassword: 'CampusPass1' }
+  });
+  assert.equal(registration.response.status, 201);
+  const studentCookie = registration.response.headers.get('set-cookie').split(';')[0];
+  const created = await createOrder(phone, {
+    type: '新生选号预约', selectedOfferId: offers.body.offers[0].id, idCard: idCardFor(phone), cookie: studentCookie
+  });
+  assert.equal(created.response.status, 201);
+
+  const beforeAddress = await request('/api/student/records', { method: 'POST', cookie: studentCookie, body: {} });
+  const pendingRecord = beforeAddress.body.records.find((item) => item.id === created.body.record.id);
+  assert.equal(pendingRecord.offline, null);
+  assert.equal(pendingRecord.activationStatus, 'pending');
+
+  const address = '西校区通信服务中心 D06';
+  const saved = await request('/api/admin/offline-settings', { method: 'PATCH', cookie: admin, body: { verificationAddress: address } });
+  assert.equal(saved.response.status, 200);
+  assert.ok(saved.body.affectedOrders >= 1);
+
+  const afterAddress = await request('/api/student/records', { method: 'POST', cookie: studentCookie, body: {} });
+  const assignedRecord = afterAddress.body.records.find((item) => item.id === created.body.record.id);
+  assert.equal(assignedRecord.offline.location, address);
+  assert.match(assignedRecord.offline.featureCode, /^[A-Z0-9_-]{8}$/);
 });
 
 test('学生可用手机号和办理密码查询本人服务', async () => {
