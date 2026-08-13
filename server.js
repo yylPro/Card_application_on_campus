@@ -1300,16 +1300,15 @@ async function api(req, res, url) {
     let affectedOrders = 0;
     for (const record of db.orders) {
       if (!record.selectedOfferId || record.status === 'cancelled' || record.activationStatus === 'activated') continue;
-      record.offlineLocation = action === 'clear' ? '' : verificationAddress;
-      if (action === 'clear') {
-        record.offlineFeatureCode = '';
-        record.offlineAssignedAt = '';
-      } else {
+      // A location and feature code are a student-facing assignment. Once issued,
+      // keep them stable so changing the default location cannot invalidate an order.
+      if (action === 'set' && (!record.offlineLocation || !record.offlineFeatureCode)) {
+        record.offlineLocation = verificationAddress;
         if (!record.offlineFeatureCode) record.offlineFeatureCode = uniqueFeatureCode(db);
-        record.offlineAssignedAt = updatedAt;
+        record.offlineAssignedAt = record.offlineAssignedAt || updatedAt;
+        record.updatedAt = updatedAt;
+        affectedOrders += 1;
       }
-      record.updatedAt = updatedAt;
-      affectedOrders += 1;
     }
     audit(db, action === 'clear' ? 'offline-address.cleared' : 'offline-address.updated', session.user, 'global-settings', { affectedOrders });
     writeDb(db);

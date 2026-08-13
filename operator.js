@@ -122,7 +122,7 @@ function renderRecords() {
       <span><strong>${escapeHtml(record.type)}</strong><small>${escapeHtml(record.detail)}</small></span>
       <span><strong>${escapeHtml(record.type.includes('选号') ? record.address : record.appointment)}</strong><small>${formatTime(record.createdAt)}</small></span>
       <span><span class="status-chip ${escapeHtml(record.status)}">${labelFrom(statusOptions, record.status)}</span><small>${labelFrom(verificationOptions, record.verificationStatus)}</small></span>
-      <span><button class="outline-button record-open" data-record="${escapeHtml(record.id)}" data-category="${record.category}">处理</button></span>
+      <span><button class="outline-button record-open" data-record="${escapeHtml(record.id)}" data-category="${record.category}">${record.category === 'order' && record.type.includes('选号') ? '查看/人工处理' : '处理'}</button></span>
     </article>
   `).join('')}`;
 }
@@ -135,7 +135,7 @@ function renderNumberOffers(offers) {
 function renderOverview(data) {
   overview = data;
   const addressSubmit = document.querySelector('#offlineSettingsForm button[type="submit"]');
-  if (addressSubmit) addressSubmit.textContent = '确认并覆盖地址';
+  if (addressSubmit) addressSubmit.textContent = '保存为新订单默认地址';
   const serviceToggle = document.getElementById('serviceToggleButton');
   const serviceMeta = document.getElementById('serviceStatusMeta');
   const serviceEnabled = data.serviceStatus?.enabled !== false;
@@ -144,7 +144,7 @@ function renderOverview(data) {
   const offlineAddress = data.offlineSettings?.verificationAddress || '';
   document.getElementById('offlineSettingsForm').elements.verificationAddress.value = offlineAddress;
   document.getElementById('offlineSettingsMeta').textContent = offlineAddress
-    ? `当前全部选号订单使用此地址${data.offlineSettings.updatedAt ? ` · 更新于 ${formatTime(data.offlineSettings.updatedAt)}` : ''}`
+    ? `新提交的选号订单将自动获得此地址和唯一特征码；已发出的地址与特征码保持不变${data.offlineSettings.updatedAt ? ` · 更新于 ${formatTime(data.offlineSettings.updatedAt)}` : ''}`
     : '尚未设置线下实名认证地址';
   document.getElementById('metricScans').textContent = data.metrics.scans;
   document.getElementById('metricOrders').textContent = data.metrics.orders;
@@ -248,7 +248,7 @@ document.getElementById('offlineSettingsForm').addEventListener('submit', async 
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'set', verificationAddress: form.elements.verificationAddress.value.trim() })
     });
-    showToast(`全局线下地址已保存，已同步 ${result.affectedOrders} 个待激活选号订单`);
+    showToast(`新订单默认线下地址已保存，已为 ${result.affectedOrders} 个未分配订单自动补发地址和特征码`);
     await loadOverview();
   } catch (error) {
     showToast(error.message, true);
@@ -257,11 +257,11 @@ document.getElementById('offlineSettingsForm').addEventListener('submit', async 
   }
 });
 document.getElementById('clearOfflineAddressButton')?.addEventListener('click', async (event) => {
-  if (!window.confirm('清空后，尚未激活订单的线下地址和特征码也会撤销，确定继续吗？')) return;
+  if (!window.confirm('清空后，新提交的选号订单将不再自动分配线下地址；已经发出的地址和特征码不会撤销。确定继续吗？')) return;
   event.currentTarget.disabled = true;
   try {
     const result = await api('/api/admin/offline-settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'clear' }) });
-    showToast(`线下实名认证地址已清空，已同步 ${result.affectedOrders} 个待激活选号订单`);
+    showToast('新订单默认线下地址已清空；已发出的地址和特征码仍然有效');
     await loadOverview();
   } catch (error) { showToast(error.message, true); }
   finally { event.currentTarget.disabled = false; }

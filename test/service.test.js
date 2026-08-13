@@ -480,6 +480,43 @@ test('线下实体端使用授权手机号注册，且仅凭特征码和身份�
   assert.equal(exported.激活状态, '已激活');
 });
 
+test('默认线下地址自动分配给选号订单，之后修改或清空默认地址不影响已发出的特征码', async () => {
+  const admin = await adminCookie();
+  const initialAddress = '南校区营业厅 B08';
+  const firstAddressUpdate = await request('/api/admin/offline-settings', {
+    method: 'PATCH', cookie: admin, body: { verificationAddress: initialAddress }
+  });
+  assert.equal(firstAddressUpdate.response.status, 200);
+
+  const offers = await request('/api/schools/XXU-2026/numbers');
+  const phone = '13700000005';
+  const created = await createOrder(phone, { type: '新生选号预约', selectedOfferId: offers.body.offers[0].id, idCard: idCardFor(phone) });
+  assert.equal(created.response.status, 201);
+
+  const initialOverview = await request('/api/admin/overview', { cookie: admin });
+  const initialRecord = initialOverview.body.orders.find((item) => item.id === created.body.record.id);
+  assert.equal(initialRecord.offlineLocation, initialAddress);
+  assert.match(initialRecord.offlineFeatureCode, /^[A-Z0-9_-]{8}$/);
+  const featureCode = initialRecord.offlineFeatureCode;
+
+  const replacementAddress = '北校区营业厅 C12';
+  const changed = await request('/api/admin/offline-settings', {
+    method: 'PATCH', cookie: admin, body: { verificationAddress: replacementAddress }
+  });
+  assert.equal(changed.response.status, 200);
+  const afterChange = await request('/api/admin/overview', { cookie: admin });
+  const unchangedRecord = afterChange.body.orders.find((item) => item.id === created.body.record.id);
+  assert.equal(unchangedRecord.offlineLocation, initialAddress);
+  assert.equal(unchangedRecord.offlineFeatureCode, featureCode);
+
+  const cleared = await request('/api/admin/offline-settings', { method: 'PATCH', cookie: admin, body: { action: 'clear' } });
+  assert.equal(cleared.response.status, 200);
+  const afterClear = await request('/api/admin/overview', { cookie: admin });
+  const stillAssigned = afterClear.body.orders.find((item) => item.id === created.body.record.id);
+  assert.equal(stillAssigned.offlineLocation, initialAddress);
+  assert.equal(stillAssigned.offlineFeatureCode, featureCode);
+});
+
 test('学生可用手机号和办理密码查询本人服务', async () => {
   const phone = '13700000003';
   const password = 'CampusPass1';
