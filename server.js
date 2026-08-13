@@ -78,7 +78,7 @@ const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_RESEND_MS = 60 * 1000;
 const VOUCHER_DEFAULT_TTL_DAYS = 30;
-const MAX_BODY_BYTES = 5 * 1024 * 1024;
+const MAX_BODY_BYTES = 16 * 1024 * 1024;
 const ALLOWED_OPERATORS = new Set(['中国移动', '中国联通', '中国电信']);
 const TEST_PHONE_NUMBERS = new Set((process.env.TEST_PHONE_NUMBERS || '13800000001,13800000002,13800000003,13900000001,13900000002')
   .split(',').map((phone) => phone.trim()).filter(validPhone));
@@ -451,14 +451,14 @@ function parseIdImage(value) {
   const match = /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/.exec(String(value || ''));
   if (!match) throw new Error('身份证图片仅支持 JPG 或 PNG 格式');
   const buffer = Buffer.from(match[2], 'base64');
-  if (!buffer.length || buffer.length > 2 * 1024 * 1024) throw new Error('单张身份证图片不能超过 2MB');
+  if (!buffer.length || buffer.length > 5 * 1024 * 1024) throw new Error('单张身份证图片不能超过 5MB，请压缩后重试');
   const detectedMime = buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
     ? 'image/png'
     : buffer[0] === 0xff && buffer[1] === 0xd8 ? 'image/jpeg' : '';
   if (!detectedMime || detectedMime !== match[1]) throw new Error('身份证图片内容与文件格式不一致');
   const dimensions = detectedMime === 'image/png' ? pngDimensions(buffer) : jpegDimensions(buffer);
   if (!dimensions) throw new Error('身份证图片文件已损坏或无法识别');
-  if (dimensions.width < 300 || dimensions.height < 180) throw new Error('身份证图片尺寸不能小于 300×180 像素');
+  if (dimensions.width < 100 || dimensions.height < 100) throw new Error('身份证图片尺寸不能小于 100×100 像素');
   return { buffer, mime: detectedMime };
 }
 

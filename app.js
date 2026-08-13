@@ -118,7 +118,10 @@ function userError(error, fallback = '操作未完成，请稍后重试') {
 }
 
 function imageDataUrl(file) {
-  return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('身份证图片读取失败')); reader.readAsDataURL(file); });
+  if (!file || !file.size) return Promise.reject(new Error('请选择身份证正反面图片'));
+  if (!['image/jpeg', 'image/png'].includes(file.type)) return Promise.reject(new Error('身份证图片仅支持 JPG 或 PNG 格式，请不要直接上传 HEIC 图片'));
+  if (file.size > 5 * 1024 * 1024) return Promise.reject(new Error('单张身份证图片不能超过 5MB，请压缩后重试'));
+  return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('身份证图片读取失败，请重新选择图片')); reader.readAsDataURL(file); });
 }
 
 async function loadNumberOffers() {
