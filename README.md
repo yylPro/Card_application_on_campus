@@ -150,6 +150,24 @@ SQL Server 和 MySQL 适配器当前把应用状态保存为 `campus_snapshot` �
 - `SCHOOL_VERIFY_URL`、`SCHOOL_VERIFY_TOKEN`
 - `IMPORT_DIR`、`TEST_PHONE_NUMBERS`
 
+### 授权手机号管理工具
+
+服务器上在项目根目录执行以下命令。工具接收明文手机号，只将 SHA-256 摘要写入 `.env`，并在实际修改前自动生成 `.env.backup.<时间戳>` 备份：
+
+```powershell
+# 新增运营商后台授权手机号
+npm run auth-phone -- admin add 13800138000
+
+# 删除运营商后台授权手机号
+npm run auth-phone -- admin remove 13800138000
+
+# 新增或删除线下实体端授权手机号
+npm run auth-phone -- offline add 13900139000
+npm run auth-phone -- offline remove 13900139000
+```
+
+也可以直接运行命令后按提示输入端类型、操作和手机号。旧写法 `npm run auth-phone -- admin 13800138000` 仍表示新增。修改后重启服务使新的环境变量生效；使用 PM2 时执行 `pm2 restart campus-service --update-env`。
+
 ## 安全边界
 
 - 生产环境（`NODE_ENV=production`）默认关闭三端自助注册、移除内置测试白名单、禁止 JSON 存储，并强制配置 `ACTIVATION_EXPORT_KEY` 和 `ID_IMAGE_ENCRYPTION_KEY`。
