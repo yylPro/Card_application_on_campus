@@ -22,7 +22,7 @@
       <main class="admin-main">
         <header class="admin-header" id="overview">
           <div><p class="eyebrow">运营商端</p><h1>校园通信服务管理</h1><p>导入号码并设置默认线下实名地址。学生提交选号后自动收到地址和特征码；人工处理仅用于补充或异常情况。</p></div>
-          <div class="admin-header-actions"><button class="outline-button" id="refreshButton">刷新数据</button><button class="outline-button" id="exportButton">导出全部</button><button class="outline-button" id="exportPendingButton">导出待处理</button><button class="outline-button" id="exportActivatedButton">导出已激活</button><button class="text-button" id="logoutButton">退出</button></div>
+          <div class="admin-header-actions"><button class="outline-button" id="refreshButton">刷新数据</button><button class="outline-button" id="exportButton">导出全部</button><button class="outline-button" id="exportPendingButton">导出待处理</button><button class="text-button" id="logoutButton">退出</button></div>
           <div class="admin-header-actions"><button class="outline-button" id="serviceToggleButton">关闭三端服务</button><small id="serviceStatusMeta">三端服务运行中</small></div>
         </header>
 
@@ -32,6 +32,16 @@
           <article><span>待处理工单</span><strong id="metricTickets">0</strong><small>维修与业务咨询</small></article>
           <article><span>启用学校</span><strong id="metricSchools">0</strong><small>当前可用二维码入口</small></article>
           <article><span>可选号码</span><strong id="metricNumbers">0</strong><small>未被预占的号码资源</small></article>
+        </section>
+
+        <section class="admin-section" id="numberExports">
+          <div class="section-title"><div><p class="eyebrow">选号工单导出</p><h2>按激活状态导出 Excel</h2></div><p>未激活导出当前未取消的选号工单；已激活可按激活日期筛选。</p></div>
+          <div class="export-toolbar">
+            <button class="outline-button" type="button" id="exportNumberPendingButton">导出未激活选号</button>
+            <label>激活开始<input type="date" id="activatedFromDate" /></label>
+            <label>激活结束<input type="date" id="activatedToDate" /></label>
+            <button class="primary-button" type="button" id="exportActivatedButton">导出已激活选号</button>
+          </div>
         </section>
 
         <section class="admin-section" id="offlineSettings">

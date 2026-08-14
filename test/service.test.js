@@ -293,6 +293,16 @@ test('错误身份证校验位和伪装图片均被拒绝', async () => {
 
 });
 
+test('非选号服务不能提交号码资源', async () => {
+  const offers = await request('/api/schools/XXU-2026/numbers');
+  const result = await createOrder('13700000007', {
+    selectedOfferId: offers.body.offers[0].id,
+    type: '校园网账号预约'
+  });
+  assert.equal(result.response.status, 400);
+  assert.match(result.body.error, /非选号服务/);
+});
+
 test('学校接口核验关闭后，订单统一标记为无需核验', async () => {
   const verified = await createOrder(TEST_PHONES[1], { schoolCode: 'API-2026', name: '内测学生' });
   assert.equal(verified.response.status, 201);
@@ -478,6 +488,22 @@ test('线下实体端使用授权手机号注册，且仅凭特征码和身份�
   assert.equal(exported.选号号码, assignedRecord.selectedNumber);
   assert.equal(String(exported.联系电话), phone);
   assert.equal(exported.激活状态, '已激活');
+
+  const pendingResponse = await fetch(`${baseUrl}/api/admin/export-number-pending.xlsx`, { headers: { Cookie: admin } });
+  assert.equal(pendingResponse.status, 200);
+  const pendingWorkbook = XLSX.read(Buffer.from(await pendingResponse.arrayBuffer()), { type: 'buffer' });
+  const pendingRows = XLSX.utils.sheet_to_json(pendingWorkbook.Sheets['未激活选号']);
+  assert.equal(pendingRows.some((item) => item.服务编号 === created.body.record.id), false);
+
+  const filteredOutResponse = await fetch(`${baseUrl}/api/admin/export-activated.xlsx?from=2099-01-01`, { headers: { Cookie: admin } });
+  assert.equal(filteredOutResponse.status, 200);
+  const filteredOutWorkbook = XLSX.read(Buffer.from(await filteredOutResponse.arrayBuffer()), { type: 'buffer' });
+  assert.equal(XLSX.utils.sheet_to_json(filteredOutWorkbook.Sheets['已实名激活名单']).length, 0);
+
+  const filteredInResponse = await fetch(`${baseUrl}/api/admin/export-activated.xlsx?from=2000-01-01&to=2099-01-01`, { headers: { Cookie: admin } });
+  assert.equal(filteredInResponse.status, 200);
+  const filteredInWorkbook = XLSX.read(Buffer.from(await filteredInResponse.arrayBuffer()), { type: 'buffer' });
+  assert.ok(XLSX.utils.sheet_to_json(filteredInWorkbook.Sheets['已实名激活名单']).some((item) => item.服务编号 === created.body.record.id));
 });
 
 test('默认线下地址自动分配给选号订单，之后修改或清空默认地址不影响已发出的特征码', async () => {

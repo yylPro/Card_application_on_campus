@@ -237,7 +237,16 @@ document.getElementById('logoutButton').addEventListener('click', async () => {
 });
 document.getElementById('exportButton').addEventListener('click', () => { location.assign('/api/admin/export.xlsx'); });
 document.getElementById('exportPendingButton')?.addEventListener('click', () => { location.assign('/api/admin/export-pending.xlsx'); });
-document.getElementById('exportActivatedButton')?.addEventListener('click', () => { location.assign('/api/admin/export-activated.xlsx'); });
+document.getElementById('exportNumberPendingButton')?.addEventListener('click', () => { location.assign('/api/admin/export-number-pending.xlsx'); });
+document.getElementById('exportActivatedButton')?.addEventListener('click', () => {
+  const from = document.getElementById('activatedFromDate')?.value || '';
+  const to = document.getElementById('activatedToDate')?.value || '';
+  if (from && to && from > to) return showToast('激活开始日期不能晚于结束日期', true);
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  location.assign(`/api/admin/export-activated.xlsx${params.toString() ? `?${params}` : ''}`);
+});
 document.getElementById('offlineSettingsForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;

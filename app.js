@@ -145,7 +145,7 @@ async function loadNumberOffers() {
       const payload = await readJson(response, '号码资源加载失败，请稍后重试');
       if (!response.ok) throw new Error(payload.error || '号码资源暂不可用');
       tabs.innerHTML = operators.map((item) => `<button type="button" class="operator-tab ${item === operator ? 'active' : ''}" data-operator="${item}">${item}</button>`).join('');
-      list.innerHTML = payload.offers.length ? payload.offers.map((offer) => `<button type="button" class="number-option ${selectedInput.value === offer.id ? 'selected' : ''}" data-offer-id="${offer.id}"><strong>${offer.displayNumber}</strong><span>${offer.planName} · ${offer.monthlyFee} 元/月</span></button>`).join('') : '<p class="empty-state">未找到可选号码</p>';
+      list.innerHTML = payload.offers.length ? payload.offers.map((offer) => `<button type="button" class="number-option ${selectedInput.value === offer.id ? 'selected' : ''}" data-offer-id="${escapeHtml(offer.id)}"><strong>${escapeHtml(offer.displayNumber)}</strong><span>${escapeHtml(offer.planName)} · ${escapeHtml(offer.monthlyFee)} 元/月</span></button>`).join('') : '<p class="empty-state">未找到可选号码</p>';
       pagination.innerHTML = payload.totalPages > 1 ? `<button type="button" class="outline-button" data-page="prev" ${page === 1 ? 'disabled' : ''}>上一页</button><span>第 ${page} / ${payload.totalPages} 页，共 ${payload.total} 个号码</span><button type="button" class="outline-button" data-page="next" ${page >= payload.totalPages ? 'disabled' : ''}>下一页</button>` : `<span>共 ${payload.total} 个号码</span>`;
     } catch (error) { list.innerHTML = '<p class="empty-state">号码加载失败，请稍后重试</p>'; pagination.replaceChildren(); showToast(userError(error), true); }
   };
@@ -262,12 +262,12 @@ function renderRecords(records) {
   }
   target.innerHTML = records.map((record) => `
     <article class="record-item">
-      <div><strong>${record.type}</strong><small>${record.id} · ${formatTime(record.createdAt)}${record.operator ? ` · ${record.operator} ${record.selectedNumber || ''}` : ''}</small></div>
-      <span class="status-chip ${record.status}">${statusLabel(record.status)}</span>
+      <div><strong>${escapeHtml(record.type)}</strong><small>${escapeHtml(record.id)} · ${formatTime(record.createdAt)}${record.operator ? ` · ${escapeHtml(record.operator)} ${escapeHtml(record.selectedNumber || '')}` : ''}</small></div>
+      <span class="status-chip ${escapeHtml(record.status)}">${statusLabel(record.status)}</span>
       ${record.offline ? `<div class="offline-instruction ${record.activationStatus === 'activated' ? 'verified' : ''}"><strong>${record.activationStatus === 'activated' ? '号码已实名激活' : '请前往线下实名验证'}</strong><span>${escapeHtml(record.offline.location)}</span><code>${record.activationStatus === 'activated' ? '已激活' : escapeHtml(record.offline.featureCode)}</code></div>` : record.selectedNumber && record.activationStatus === 'pending' ? '<small>运营商正在分配线下实名地址和特征码</small>' : ''}
-      ${record.voucher?.status === 'issued' ? `<div class="voucher-card"><strong>线下领卡凭证</strong><img src="${record.voucher.qrDataUrl}" alt="线下核销二维码" /><small>有效至 ${formatTime(record.voucher.expiresAt)}；到服务点出示后，须验证原手机号。</small></div>` : ''}
+      ${record.voucher?.status === 'issued' ? `<div class="voucher-card"><strong>线下领卡凭证</strong><img src="${escapeHtml(record.voucher.qrDataUrl)}" alt="线下核销二维码" /><small>有效至 ${formatTime(record.voucher.expiresAt)}；到服务点出示后，须验证原手机号。</small></div>` : ''}
       ${record.voucher && record.voucher.status !== 'issued' ? `<small class="record-confirmed">领卡凭证：${record.voucher.status === 'redeemed' ? '已核销' : record.voucher.status === 'expired' ? '已过期' : '已作废'}</small>` : ''}
-      ${record.status === 'completed' && !record.completionConfirmedAt ? `<button class="text-button completion-open" data-completion-record="${record.id}">确认完成</button>` : ''}
+      ${record.status === 'completed' && !record.completionConfirmedAt ? `<button class="text-button completion-open" data-completion-record="${escapeHtml(record.id)}">确认完成</button>` : ''}
       ${record.completionConfirmedAt ? `<small class="record-confirmed">已确认 · ${record.rating} 星</small>` : ''}
     </article>
   `).join('');
@@ -295,7 +295,7 @@ async function loadSchool() {
     selectedSchoolCode.value = school.code;
     schoolSearch.value = school.name;
     const colleges = school.colleges || [];
-    collegeSelect.innerHTML = colleges.map((college) => `<option value="${college}">${college}</option>`).join('') + '<option value="其他">其他学院</option>';
+    collegeSelect.innerHTML = colleges.map((college) => `<option value="${escapeHtml(college)}">${escapeHtml(college)}</option>`).join('') + '<option value="其他">其他学院</option>';
     collegeCustom.hidden = colleges.length > 0;
     collegeCustom.required = false;
     document.title = `${school.name} · 校园通信服务`;
@@ -344,7 +344,7 @@ schoolSearch?.addEventListener('input', () => {
   schoolSearchTimer = setTimeout(async () => {
     const query = schoolSearch.value.trim();
     if (query.length < 2) { schoolResults.replaceChildren(); return; }
-    try { const response = await fetch(`/api/schools?q=${encodeURIComponent(query)}`); const result = await readJson(response, '学校查询失败'); schoolResults.innerHTML = result.schools.map((item) => `<button type="button" data-school-code="${item.code}">${item.name}</button>`).join('') || '<span>未匹配到学校</span>'; schoolResults._schools = result.schools; } catch { schoolResults.innerHTML = '<span>学校查询失败</span>'; }
+    try { const response = await fetch(`/api/schools?q=${encodeURIComponent(query)}`); const result = await readJson(response, '学校查询失败'); schoolResults.innerHTML = result.schools.map((item) => `<button type="button" data-school-code="${escapeHtml(item.code)}">${escapeHtml(item.name)}</button>`).join('') || '<span>未匹配到学校</span>'; schoolResults._schools = result.schools; } catch { schoolResults.innerHTML = '<span>学校查询失败</span>'; }
   }, 200);
 });
 schoolResults?.addEventListener('click', (event) => {
@@ -352,7 +352,7 @@ schoolResults?.addEventListener('click', (event) => {
   const item = schoolResults._schools.find((schoolItem) => schoolItem.code === button.dataset.schoolCode);
   selectedSchoolCode.value = item.code; schoolCode = item.code; school = item; schoolSearch.value = item.name; schoolResults.replaceChildren();
   document.getElementById('schoolBadge').textContent = `${item.name}服务入口`;
-  const colleges = item.colleges || []; collegeSelect.innerHTML = colleges.map((college) => `<option value="${college}">${college}</option>`).join('') + '<option value="其他">其他学院</option>';
+  const colleges = item.colleges || []; collegeSelect.innerHTML = colleges.map((college) => `<option value="${escapeHtml(college)}">${escapeHtml(college)}</option>`).join('') + '<option value="其他">其他学院</option>';
   collegeCustom.hidden = colleges.length > 0; collegeCustom.required = false;
   if (selectedService.title.includes('选号')) loadNumberOffers();
 });
