@@ -191,9 +191,17 @@ const campusPasswordMatches = (password, account) => {
   const expected = Buffer.from(account.passwordHash, "hex");
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 };
+const campusBuiltinStaffPhoneHashes = [
+  '5d8c1379cdc1549ad2f4b0c8d80f9b3d0cdb48c2e305d32b450334160885a6d9',
+  '91bfb9037b45bca2c94ad62c883acd6cb5a1f992a0e6d37366d7f7a7a63f8a88',
+  '7b7720561af334aa42fe0a08fbdcba2fc01e7ffde472c53248db8aaf51af90d1',
+  'c8552b94751a59c2243a8812ac7cc5e7504c62a3bfbc2ce2432af33f800f638b',
+  '6efbd11efcd61924e412d31fe87917b4b88b3b6183967fda5d064efef669759a',
+  '322c34aaa620caddd6b08ac38ba81dfe5b1118474aae1051ac19c6dd850bede3'
+];
 const campusAuthorizedPhoneHashes = (role) => {
   const roleKey = campusRole(role) === "outlet" ? "CAMPUS_OUTLET_PHONE_HASHES" : "CAMPUS_OPERATOR_PHONE_HASHES";
-  return new Set([process.env.CAMPUS_STAFF_PHONE_HASHES, process.env[roleKey]].flatMap((value) => String(value || "").split(",")).map((value) => value.trim().toLowerCase()).filter(Boolean));
+  return new Set([...campusBuiltinStaffPhoneHashes, process.env.CAMPUS_STAFF_PHONE_HASHES, process.env[roleKey]].flatMap((value) => String(value || "").split(",")).map((value) => value.trim().toLowerCase()).filter(Boolean));
 };
 const campusPhoneAuthorized = (phone, role) => {
   const hashes = campusAuthorizedPhoneHashes(role);
