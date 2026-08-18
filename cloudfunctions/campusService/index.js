@@ -85,7 +85,10 @@ function isBranchStaffPhone(phone) {
   return raw.split(',').map(function (item) { return item.trim().toLowerCase(); }).filter(Boolean).indexOf(hash) >= 0;
 }
 function isBranchOperatorPhone(phone) { return isBranchStaffPhone(phone); }
-function operatorScope(account) { return account && account.operatorScope === 'grid' ? 'grid' : 'branch'; }
+function operatorScope(account) {
+  if (account && isBranchStaffPhone(account.phone)) return 'branch';
+  return account && account.operatorScope === 'grid' ? 'grid' : 'branch';
+}
 function filterOperatorRecords(records, account, requestedGrid) {
   const scope = operatorScope(account);
   const grid = normalizedGrid(requestedGrid);
