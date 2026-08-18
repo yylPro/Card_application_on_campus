@@ -435,7 +435,7 @@ exports.main = async function (event) {
         var passed = ['verified', 'success', 'passed', 'ok', '通过', '成功'].indexOf(String(message.result || 'verified').toLowerCase()) >= 0;
         if (!passed) { results.push({ featureCode: code, campusNumber: campusNumber, success: false, message: '实名验证未通过' }); continue; }
         await db.collection('campus_records').doc(candidate._id).update({ data: { campusNumber: campusNumber, verificationStatus: 'verified', activationStatus: 'pending_merchant', status: 'completed', gridName: normalizedGrid(verifyingAccount.gridName), verifiedAt: db.serverDate(), verifiedByAccountId: verifyingAccount._id, verifiedByName: verifyingAccount.name || '', verifiedByPhone: verifyingAccount.phone || '', activationProofFile: String(message.activationProofFile || data.activationProofFile || '').trim() } });
-        results.push({ featureCode: code, campusNumber: campusNumber, success: true, message: '实名验证成功，等待商家确认激活', displayNumber: candidate.selectedNumber, schoolName: candidate.schoolName, college: candidate.college });
+        results.push({ featureCode: code, campusNumber: campusNumber, success: true, message: '实名验证成功，等待商家确认激活', displayNumber: campusNumber, schoolName: candidate.schoolName, college: candidate.college });
       }
       return ok({ results: results });
     }
