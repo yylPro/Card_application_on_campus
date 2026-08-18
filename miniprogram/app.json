@@ -1,4 +1,5 @@
 {
-  "pages": ["pages/home/home", "pages/form/form", "pages/records/records", "pages/confirm/confirm"],
+  "pages": ["pages/entry/entry", "pages/home/home", "pages/form/form", "pages/records/records", "pages/confirm/confirm", "pages/operator/operator", "pages/offline/offline", "pages/merchant/merchant"],
+  "lazyCodeLoading": "requiredComponents",
   "window": { "navigationBarTitleText": "校园通信服务", "navigationBarBackgroundColor": "#0b6cb7", "navigationBarTextStyle": "white", "backgroundColor": "#f4f7f9" }
 }

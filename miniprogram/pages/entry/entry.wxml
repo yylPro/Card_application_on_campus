@@ -1,0 +1,5 @@
+<view class="page">
+  <view class="hero"><text class="hero-kicker">{{title}}</text><text class="hero-title">{{heading}}</text><text class="hero-copy">{{copy}}</text></view>
+  <view class="portal-list"><view wx:for="{{portals}}" wx:key="key" class="portal-card" bindtap="choosePortal" data-key="{{item.key}}"><view class="portal-icon" style="background: {{item.color}}">{{item.icon}}</view><view class="portal-content"><text class="portal-title">{{item.title}}</text><text class="portal-subtitle">{{item.subtitle}}</text></view><text class="portal-arrow">{{arrow}}</text></view></view>
+  <view class="tip">统一入口 · 安全办理 · 进度可查</view>
+</view>

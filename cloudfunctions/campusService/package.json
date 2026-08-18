@@ -1,0 +1,11 @@
+{
+  "name": "campusService",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "qrcode": "1.5.4",
+    "xlsx": "0.18.5",
+    "wx-server-sdk": "latest"
+  }
+}

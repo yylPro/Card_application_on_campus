@@ -1,19 +1,11 @@
-const app = getApp();
-
 function request(path, method = 'GET', data) {
   return new Promise((resolve, reject) => {
-    wx.request({
-      url: `${app.globalData.apiBase}${path}`,
-      method,
-      data,
-      header: { 'content-type': 'application/json' },
-      success(response) {
-        if (response.statusCode >= 200 && response.statusCode < 300) resolve(response.data);
-        else reject(new Error(response.data?.error || '服务暂不可用'));
-      },
-      fail() { reject(new Error('网络连接失败，请稍后重试')); }
-    });
+    wx.cloud.callFunction({ name: 'campusService', data: { action: 'proxy', path, method, data } })
+      .then(({ result }) => {
+        if (result && result.success) return resolve(result.data);
+        reject(new Error((result && result.error) || '云函数请求失败'));
+      })
+      .catch((error) => reject(new Error(error && error.message ? error.message : '云函数连接失败，请确认已部署 campusService')));
   });
 }
-
 module.exports = { request };

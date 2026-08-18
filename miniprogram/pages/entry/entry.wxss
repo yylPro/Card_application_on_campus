@@ -1,0 +1,15 @@
+page { background: #f4f7f9; color: #203447; }
+.page { padding: 28rpx; }
+.hero { margin-bottom: 28rpx; padding: 44rpx 32rpx; border-radius: 18rpx; background: linear-gradient(135deg, #0b6cb7, #1555a6); color: #fff; box-shadow: 0 12rpx 28rpx rgba(11, 108, 183, .2); }
+.hero text { display: block; }
+.hero-kicker { color: #ccecfb; font-size: 25rpx; }
+.hero-title { margin: 14rpx 0 10rpx; font-size: 44rpx; font-weight: 700; }
+.hero-copy { color: #dceff9; font-size: 26rpx; }
+.portal-list { display: flex; flex-direction: column; gap: 20rpx; }
+.portal-card { display: flex; align-items: center; padding: 28rpx 24rpx; border-radius: 16rpx; background: #fff; box-shadow: 0 4rpx 18rpx rgba(22, 64, 91, .07); }
+.portal-icon { display: flex; align-items: center; justify-content: center; width: 86rpx; height: 86rpx; margin-right: 22rpx; border-radius: 22rpx; color: #fff; font-size: 38rpx; font-weight: 700; }
+.portal-content { flex: 1; }
+.portal-title { display: block; color: #203447; font-size: 32rpx; font-weight: 700; }
+.portal-subtitle { display: block; margin-top: 8rpx; color: #718294; font-size: 24rpx; }
+.portal-arrow { color: #8aa0af; font-size: 48rpx; line-height: 1; }
+.tip { margin-top: 42rpx; color: #9aa9b5; font-size: 23rpx; text-align: center; }

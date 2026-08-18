@@ -1,16 +1,46 @@
 const { request } = require('../../utils/api');
 const app = getApp();
+
+function checkboxChecked(detail) {
+  if (detail && typeof detail.checked === 'boolean') return detail.checked;
+  const value = detail && detail.value;
+  return value === true || value === 'true' || value === 'on' || value === '1' || (Array.isArray(value) && value.length > 0);
+}
+
 Page({
-  data: { title: '', kind: 'order', isNumberOrder: false, name: '', studentNo: '', idCard: '', college: '', phone: '', address: '', detail: '', appointment: '尽快联系', appointments: ['尽快联系', '上午 09:00 - 12:00', '下午 14:00 - 18:00', '晚上 18:00 - 20:30'], operators: ['中国移动', '中国联通', '中国电信'], operator: '中国移动', numbers: [], selectedNumber: '正在加载可选号码...', selectedOfferId: '', page: 1, totalPages: 1, methods: [], fulfillmentMethod: '', serviceConsent: false, marketingConsent: false },
-  onLoad(query) { const title = decodeURIComponent(query.title || '校园网账号预约'); const isNumberOrder = title.includes('选号'); this.setData({ title, kind: query.kind || 'order', isNumberOrder }); wx.setNavigationBarTitle({ title }); if (isNumberOrder) this.loadOffers(); },
-  async loadOffers() { try { const result = await request(`/api/schools/${encodeURIComponent(app.globalData.schoolCode)}/numbers?operator=${encodeURIComponent(this.data.operator)}&page=${this.data.page}&pageSize=30`); this.offerList = result.offers; this.setData({ numbers: result.offers.map((offer) => `${offer.displayNumber} · ${offer.planName} · ${offer.monthlyFee} 元/月`), selectedNumber: result.offers.length ? '请选择意向号码' : '当前没有可选号码', totalPages: result.totalPages || 1 }); } catch (error) { this.setData({ selectedNumber: '号码加载失败' }); wx.showToast({ title: error.message, icon: 'none' }); } },
+  data: {
+    title: '校园网账号预约', kind: 'order',
+    name: '', studentNo: '', idCard: '', college: '', phone: '', address: '',
+    serviceConsent: false, submitting: false
+  },
+
+  onLoad(query) {
+    const kind = query.kind === 'ticket' ? 'ticket' : 'order';
+    this.setData({ title: '校园网账号预约', kind, college: app.globalData.college || '' });
+    wx.setNavigationBarTitle({ title: '校园网账号预约' });
+  },
+
   setField(event) { this.setData({ [event.currentTarget.dataset.key]: event.detail.value }); },
-  pickOperator(event) { this.setData({ operator: this.data.operators[event.detail.value], page: 1, selectedOfferId: '' }, () => this.loadOffers()); },
-  pickNumber(event) { const index = Number(event.detail.value); const offer = this.offerList?.[index]; if (offer) this.setData({ selectedNumber: this.data.numbers[index], selectedOfferId: offer.id }); },
-  previousPage() { if (this.data.page > 1) this.setData({ page: this.data.page - 1, selectedOfferId: '' }, () => this.loadOffers()); },
-  nextPage() { if (this.data.page < this.data.totalPages) this.setData({ page: this.data.page + 1, selectedOfferId: '' }, () => this.loadOffers()); },
-  pickAppointment(event) { this.setData({ appointment: this.data.appointments[event.detail.value] }); },
-  toggleService(event) { this.setData({ serviceConsent: event.detail.value.length > 0 }); },
-  toggleMarketing(event) { this.setData({ marketingConsent: event.detail.value.length > 0 }); },
-  async submit() { const d = this.data; if (!d.name || !d.idCard || !d.college || !d.phone || !d.address || !d.detail) return wx.showToast({ title: '请完整填写姓名、身份证、学院、手机号、地址和需求说明', icon: 'none' }); if (!d.serviceConsent) return wx.showToast({ title: '请先同意信息收集和后续联系说明', icon: 'none' }); if (d.isNumberOrder && !d.selectedOfferId) return wx.showToast({ title: '请选择意向号码', icon: 'none' }); const payload = { schoolCode: app.globalData.schoolCode, type: d.title, name: d.name, studentNo: d.studentNo, idCard: d.idCard, college: d.college, phone: d.phone, address: d.address, appointment: d.appointment, detail: d.detail, serviceConsent: d.serviceConsent, marketingConsent: d.marketingConsent, selectedOfferId: d.isNumberOrder ? d.selectedOfferId : '' }; try { const result = await request(d.kind === 'ticket' ? '/api/tickets' : '/api/orders', 'POST', payload); wx.showModal({ title: '提交成功', content: `服务编号：${result.record.id}`, showCancel: false, success: () => wx.navigateBack() }); } catch (error) { wx.showToast({ title: error.message, icon: 'none' }); } }
+  toggleService(event) { this.setData({ serviceConsent: checkboxChecked(event.detail) }); },
+
+  async submit() {
+    const d = this.data;
+    if (d.submitting) return;
+    if (!d.college) return wx.showToast({ title: '请先选择二级学院', icon: 'none' });
+    if (!d.name || !d.idCard || !d.phone) return wx.showToast({ title: '请完整填写姓名、身份证号和现有联系电话', icon: 'none' });
+    if (!/^1\d{10}$/.test(d.phone)) return wx.showToast({ title: '请输入正确的现有联系电话', icon: 'none' });
+    if (!d.serviceConsent) return wx.showToast({ title: '请先同意信息收集和后续联系说明', icon: 'none' });
+    this.setData({ submitting: true });
+    try {
+      const payload = {
+        schoolCode: app.globalData.schoolCode, type: '校园网账号预约', name: d.name, studentNo: d.studentNo,
+        idCard: d.idCard, college: d.college, phone: d.phone, address: d.address,
+        serviceConsent: d.serviceConsent
+      };
+      const result = await request(d.kind === 'ticket' ? '/api/tickets' : '/api/orders', 'POST', payload);
+      wx.showModal({ title: '提交成功', content: `服务编号：${result.record.id}`, showCancel: false, success: () => wx.navigateBack() });
+    } catch (error) {
+      wx.showToast({ title: error.message || '提交失败', icon: 'none' });
+    } finally { this.setData({ submitting: false }); }
+  }
 });

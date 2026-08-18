@@ -1,6 +1,0 @@
-{
-  "miniprogramRoot": "./",
-  "projectname": "campus-telecom-service",
-  "appid": "touristappid",
-  "setting": { "urlCheck": false, "es6": true, "minified": true }
-}
