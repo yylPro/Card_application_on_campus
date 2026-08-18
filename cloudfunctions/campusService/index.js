@@ -55,21 +55,36 @@ const BUILTIN_STAFF_PHONE_HASHES = new Set([
   '6efbd11efcd61924e412d31fe87917b4b88b3b6183967fda5d064efef669759a',
   '322c34aaa620caddd6b08ac38ba81dfe5b1118474aae1051ac19c6dd850bede3'
 ]);
+const BUILTIN_BRANCH_PHONE_HASHES = new Set([
+  '5d8c1379cdc1549ad2f4b0c8d80f9b3d0cdb48c2e305d32b450334160885a6d9',
+  '91bfb9037b45bca2c94ad62c883acd6cb5a1f992a0e6d37366d7f7a7a63f8a88',
+  '7b7720561af334aa42fe0a08fbdcba2fc01e7ffde472c53248db8aaf51af90d1',
+  'c8552b94751a59c2243a8812ac7cc5e7504c62a3bfbc2ce2432af33f800f638b',
+  '6efbd11efcd61924e412d31fe87917b4b88b3b6183967fda5d064efef669759a',
+  '322c34aaa620caddd6b08ac38ba81dfe5b1118474aae1051ac19c6dd850bede3'
+]);
+const BUILTIN_GRID_OPERATOR_PHONE_HASHES = new Set([
+  'e842f8731cb1f25ff74243c3e5f5952f99cede75e1978917bce90f74868ad1c3'
+]);
 function authorizedStaffPhone(phone, role) {
   const envName = role === 'offline' ? 'CAMPUS_OUTLET_PHONE_HASHES' : role === 'merchant' ? 'CAMPUS_MERCHANT_PHONE_HASHES' : 'CAMPUS_OPERATOR_PHONE_HASHES';
   const raw = [process.env[envName] || '', role === 'operator' ? (process.env.CAMPUS_OPERATOR_BRANCH_PHONE_HASHES || '') : ''].filter(Boolean).join(',');
-  if (!raw.trim()) return true;
   const hash = crypto.createHash('sha256').update(phone).digest('hex');
+  if (BUILTIN_GRID_OPERATOR_PHONE_HASHES.has(hash) && role !== 'operator') return false;
+  const builtinAuthorized = BUILTIN_BRANCH_PHONE_HASHES.has(hash) || (role === 'operator' && BUILTIN_GRID_OPERATOR_PHONE_HASHES.has(hash));
+  if (!raw.trim()) return true;
   const configured = raw.split(',').map(function (item) { return item.trim().toLowerCase(); }).filter(Boolean);
-  return BUILTIN_STAFF_PHONE_HASHES.has(hash) || configured.indexOf(hash) >= 0;
+  return builtinAuthorized || (BUILTIN_STAFF_PHONE_HASHES.has(hash) && role === 'operator') || configured.indexOf(hash) >= 0;
 }
 function normalizedGrid(value) { return String(value || '').trim(); }
-function isBranchOperatorPhone(phone) {
+function isBranchStaffPhone(phone) {
+  const hash = crypto.createHash('sha256').update(String(phone || '')).digest('hex');
+  if (BUILTIN_BRANCH_PHONE_HASHES.has(hash)) return true;
   const raw = process.env.CAMPUS_OPERATOR_BRANCH_PHONE_HASHES || '';
   if (!raw.trim()) return false;
-  const hash = crypto.createHash('sha256').update(String(phone || '')).digest('hex');
   return raw.split(',').map(function (item) { return item.trim().toLowerCase(); }).filter(Boolean).indexOf(hash) >= 0;
 }
+function isBranchOperatorPhone(phone) { return isBranchStaffPhone(phone); }
 function operatorScope(account) { return account && account.operatorScope === 'grid' ? 'grid' : 'branch'; }
 function filterOperatorRecords(records, account, requestedGrid) {
   const scope = operatorScope(account);
@@ -443,7 +458,7 @@ exports.main = async function (event) {
       if (confirmRecord.selectedOfferId) { var merchantOffer = (await db.collection('campus_offers').where({ id: confirmRecord.selectedOfferId }).limit(1).get()).data[0]; if (merchantOffer) await db.collection('campus_offers').doc(merchantOffer._id).update({ data: { status: 'activated' } }); }
       return ok({ message: '商家确认激活成功' });
     }
-    if (method === 'POST' && (path === '/api/staff/register' || path === '/api/staff/login')) { var role = ['offline', 'operator', 'merchant'].indexOf(data.role) >= 0 ? data.role : ''; var phone = String(data.phone || '').trim(); var password = String(data.password || ''); var staffName = String(data.name || '').trim(); var staffGrid = normalizedGrid(data.gridName); var branchOperator = role === 'operator' && isBranchOperatorPhone(phone); if (!role || !/^1\d{10}$/.test(phone)) return fail('请输入有效手机号码'); if (!authorizedStaffPhone(phone, role)) return fail('该手机号未获本端授权'); if (path === '/api/staff/register') { if (role === 'merchant' && !staffName) return fail('请输入商家姓名'); if ((role === 'offline' || role === 'operator') && !branchOperator && !staffGrid) return fail('请填写所属网格'); if (password !== String(data.confirmPassword || '')) return fail('两次密码不一致'); if (!validPassword(password)) return fail('密码需为9-15位，并同时包含大小写字母和数字'); var exists = await db.collection('campus_accounts').where({ phone: phone, role: role }).limit(1).get(); if (exists.data.length) return fail('该手机号已注册，请直接登录'); var salt = crypto.randomBytes(16).toString('hex'); var account = await db.collection('campus_accounts').add({ data: { phone: phone, role: role, name: staffName, gridName: staffGrid, operatorScope: role === 'operator' ? (branchOperator ? 'branch' : 'grid') : '', salt: salt, passwordHash: hashPassword(password, salt), status: 'active' } }); return ok({ accountId: account._id, message: '注册成功，请登录' }); } var found = await db.collection('campus_accounts').where({ phone: phone, role: role, status: 'active' }).limit(1).get(); var login = found.data[0]; if (!login || hashPassword(password, login.salt) !== login.passwordHash) return fail('手机号或密码错误'); return ok({ accountId: login._id, role: role, phone: phone, name: login.name || '', gridName: login.gridName || '', operatorScope: role === 'operator' ? (login.operatorScope || 'branch') : (login.operatorScope || ''), message: '登录成功' }); }
+    if (method === 'POST' && (path === '/api/staff/register' || path === '/api/staff/login')) { var role = ['offline', 'operator', 'merchant'].indexOf(data.role) >= 0 ? data.role : ''; var phone = String(data.phone || '').trim(); var password = String(data.password || ''); var staffName = String(data.name || '').trim(); var staffGrid = normalizedGrid(data.gridName); var branchStaff = isBranchStaffPhone(phone); var branchOperator = role === 'operator' && branchStaff; if (!role || !/^1\d{10}$/.test(phone)) return fail('请输入有效手机号码'); if (!authorizedStaffPhone(phone, role)) return fail('该手机号未获本端授权'); if (path === '/api/staff/register') { if (role === 'merchant' && !staffName) return fail('请输入商家姓名'); if ((role === 'offline' || role === 'operator') && !branchStaff && !staffGrid) return fail('请填写所属网格'); if (password !== String(data.confirmPassword || '')) return fail('两次密码不一致'); if (!validPassword(password)) return fail('密码需为9-15位，并同时包含大小写字母和数字'); var exists = await db.collection('campus_accounts').where({ phone: phone, role: role }).limit(1).get(); if (exists.data.length) return fail('该手机号已注册，请直接登录'); var salt = crypto.randomBytes(16).toString('hex'); var account = await db.collection('campus_accounts').add({ data: { phone: phone, role: role, name: staffName, gridName: staffGrid, operatorScope: role === 'operator' ? (branchOperator ? 'branch' : 'grid') : '', salt: salt, passwordHash: hashPassword(password, salt), status: 'active' } }); return ok({ accountId: account._id, message: '注册成功，请登录' }); } var found = await db.collection('campus_accounts').where({ phone: phone, role: role, status: 'active' }).limit(1).get(); var login = found.data[0]; if (!login || hashPassword(password, login.salt) !== login.passwordHash) return fail('手机号或密码错误'); return ok({ accountId: login._id, role: role, phone: phone, name: login.name || '', gridName: login.gridName || '', operatorScope: role === 'operator' ? (login.operatorScope || 'branch') : (login.operatorScope || ''), message: '登录成功' }); }
     return fail('未实现的接口: ' + method + ' ' + path);
   } catch (error) { console.error('campusService error', error); return fail(error && error.message ? error.message : '云函数执行失败'); }
 };

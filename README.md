@@ -42,6 +42,8 @@ npm run dev
 
 授权手机号不以明文保存在代码中。云函数使用 `CAMPUS_*_PHONE_HASHES`，服务器使用 `ADMIN_AUTHORIZED_PHONE_HASHES` 和 `OFFLINE_AUTHORIZED_PHONE_HASHES`。服务器版可使用：
 
+云函数内置权限为：六个分公司账号可登录运营商端、线下办理端和商家兑换端，并拥有全部网格权限；一个开发测试账号仅作为低权限网格运营商使用，不能登录线下办理端或商家兑换端。号码原文不写入仓库，实际授权台账应单独保存。
+
 ```powershell
 npm run auth-phone -- admin add 13800138000
 npm run auth-phone -- offline add 13900139000
