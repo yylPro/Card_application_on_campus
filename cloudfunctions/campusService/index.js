@@ -109,6 +109,8 @@ function normalizeCampusNumber(value) { return String(value || '').trim().replac
 async function findCampusNumberRecord(value) {
   var campusNumber = normalizeCampusNumber(value);
   if (!campusNumber) return null;
+  var entered = (await db.collection('campus_records').where({ campusNumber: campusNumber }).limit(1).get()).data[0];
+  if (entered) return entered;
   var direct = (await db.collection('campus_records').where({ selectedNumber: campusNumber }).limit(1).get()).data[0];
   if (direct) return direct;
   var selectedPhone = (await db.collection('campus_records').where({ selectedPhone: campusNumber }).limit(1).get()).data[0];
@@ -116,7 +118,9 @@ async function findCampusNumberRecord(value) {
   var offer = (await db.collection('campus_offers').where({ phone: campusNumber }).limit(1).get()).data[0];
   if (offer) return (await db.collection('campus_records').where({ selectedOfferId: offer.id }).limit(1).get()).data[0] || null;
   var records = await listAllRecords();
-  return records.find(function (item) { return normalizeCampusNumber(item.selectedNumber) === campusNumber || normalizeCampusNumber(item.selectedPhone) === campusNumber; }) || null;
+  return records.find(function (item) {
+    return normalizeCampusNumber(item.campusNumber) === campusNumber || normalizeCampusNumber(item.selectedNumber) === campusNumber || normalizeCampusNumber(item.selectedPhone) === campusNumber;
+  }) || null;
 }
 async function seed() {
   const names = ['campus_schools', 'campus_offers', 'campus_records', 'campus_accounts', 'campus_settings'];
@@ -172,12 +176,12 @@ function exportDateTime(value) {
   return fields.year + '-' + fields.month + '-' + fields.day + ' ' + fields.hour + ':' + fields.minute + ':' + fields.second;
 }
 function activationTimeForExport(record) { return record.activationAt || record.verifiedAt || (record.activationStatus === 'activated' ? record.updatedAt : ''); }
-const OPERATOR_EXPORT_HEADERS = ['服务编码', '学校', '学院', '学号', '姓名', '身份证号码', '特征码', '地址', '线下实名地址', '创建时间', '核验时间', '实名人员姓名', '实名人员电话', '商家姓名', '商家电话'];
+const OPERATOR_EXPORT_HEADERS = ['服务编码', '学校', '学院', '学号', '姓名', '身份证号码', '特征码', '校园号码', '地址', '线下实名地址', '创建时间', '核验时间', '实名人员姓名', '实名人员电话', '商家姓名', '商家电话'];
 const OFFLINE_EXPORT_HEADERS = ['服务编码', '学校', '学院', '学号', '姓名', '身份证号码', '特征码', '地址'];
 function operatorExportRows(records) {
   return records.map(function (record) {
     return {
-      服务编码: record.serviceCode || record._id || record.id || '', 学校: record.schoolName || '', 学院: record.college || '', 学号: record.studentNo || '', 姓名: record.name || '', 身份证号码: record.idCard || '', 特征码: record.featureCode || '', 地址: record.address || record.shippingAddress || '', 线下实名地址: record.outletAddress || '', 创建时间: exportDateTime(record.createdAt), 核验时间: exportDateTime(record.verifiedAt || activationTimeForExport(record)), 实名人员姓名: record.verifiedByName || '', 实名人员电话: record.verifiedByPhone || '', 商家姓名: record.merchantName || '', 商家电话: record.merchantPhone || ''
+      服务编码: record.serviceCode || record._id || record.id || '', 学校: record.schoolName || '', 学院: record.college || '', 学号: record.studentNo || '', 姓名: record.name || '', 身份证号码: record.idCard || '', 特征码: record.featureCode || '', 校园号码: record.campusNumber || record.selectedNumber || record.selectedPhone || '', 地址: record.address || record.shippingAddress || '', 线下实名地址: record.outletAddress || '', 创建时间: exportDateTime(record.createdAt), 核验时间: exportDateTime(record.verifiedAt || activationTimeForExport(record)), 实名人员姓名: record.verifiedByName || '', 实名人员电话: record.verifiedByPhone || '', 商家姓名: record.merchantName || '', 商家电话: record.merchantPhone || ''
     };
   });
 }
@@ -227,7 +231,7 @@ async function ensureOffers(schoolCode) {
 function requestData(event) { var data = {}; var raw = String(event.path || '/'); var q = raw.indexOf('?'); if (q >= 0) { var query = raw.slice(q + 1).split('&'); raw = raw.slice(0, q); for (var i = 0; i < query.length; i += 1) { var pair = query[i].split('='); if (pair[0]) data[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1] || ''); } } var extra = event.data || {}; for (var key in extra) data[key] = extra[key]; return { path: raw, data: data }; }
 exports.main = async function (event) {
   try {
-    if (!event || event.action === 'health') return { success: true, service: 'campusService', version: '20260818-6', cloudEnv: cloud.getWXContext().ENV };
+    if (!event || event.action === 'health') return { success: true, service: 'campusService', version: '20260818-7', cloudEnv: cloud.getWXContext().ENV };
     if (event.action !== 'proxy') return fail('不支持的操作');
     var parsed = requestData(event); var path = parsed.path; var data = parsed.data; var method = String(event.method || 'GET').toUpperCase();
     await ensureSeeded();
@@ -359,7 +363,7 @@ exports.main = async function (event) {
       var operatorRecords = filterOperatorRecords(allOperatorRecords, orderOperator, data.gridName);
       var operatorOffers = (await db.collection('campus_offers').limit(1000).get()).data; var operatorSchools = (await db.collection('campus_schools').limit(1000).get()).data;
       var schoolMap = {}; operatorSchools.forEach(function (s) { schoolMap[s.code] = s.name; }); var offerMap = {}; operatorOffers.forEach(function (o) { offerMap[o.id] = o; });
-      operatorRecords = operatorRecords.map(function (item) { var offerItem = offerMap[item.selectedOfferId] || {}; item.id = item._id; item.displayNumber = item.selectedNumber || offerItem.displayNumber || ''; item.schoolName = schoolMap[item.schoolCode] || ''; item.outletAddress = item.outletAddress || offerItem.outletAddress || ''; item.deliveryRecipient = item.deliveryRecipient || item.shippingRecipient || ''; item.deliveryPhone = item.deliveryPhone || item.shippingPhone || ''; item.address = item.address || item.shippingAddress || ''; item.verifiedByName = item.verifiedByName || ''; item.verifiedByPhone = item.verifiedByPhone || ''; item.merchantName = item.merchantName || ''; item.merchantPhone = item.merchantPhone || ''; return item; });
+      operatorRecords = operatorRecords.map(function (item) { var offerItem = offerMap[item.selectedOfferId] || {}; item.id = item._id; item.displayNumber = item.selectedNumber || offerItem.displayNumber || ''; item.campusNumber = normalizeCampusNumber(item.campusNumber); item.schoolName = schoolMap[item.schoolCode] || ''; item.outletAddress = item.outletAddress || offerItem.outletAddress || ''; item.deliveryRecipient = item.deliveryRecipient || item.shippingRecipient || ''; item.deliveryPhone = item.deliveryPhone || item.shippingPhone || ''; item.address = item.address || item.shippingAddress || ''; item.verifiedByName = item.verifiedByName || ''; item.verifiedByPhone = item.verifiedByPhone || ''; item.merchantName = item.merchantName || ''; item.merchantPhone = item.merchantPhone || ''; return item; });
       var grids = {}; allOperatorRecords.forEach(function (item) { var grid = normalizedGrid(item.gridName); if (grid) grids[grid] = true; });
       return ok({ orders: operatorRecords, total: operatorRecords.length, gridName: operatorScope(orderOperator) === 'grid' ? normalizedGrid(orderOperator.gridName) : normalizedGrid(data.gridName), scope: operatorScope(orderOperator), accountGrid: normalizedGrid(orderOperator.gridName), gridOptions: Object.keys(grids).sort() });
     }
@@ -422,18 +426,15 @@ exports.main = async function (event) {
       if (!verifyingAccount) return fail('线下实体端账号未登录');
       var messages = Array.isArray(data.messages) ? data.messages : []; var results = [];
       for (var m = 0; m < messages.length; m += 1) {
-        var message = messages[m] || {}; var code = String(message.featureCode || '').trim(); var campusNumber = normalizeCampusNumber(message.campusNumber || message.selectedNumber || '');
+        var message = messages[m] || {}; var code = String(message.featureCode || '').trim(); var campusNumber = normalizeCampusNumber(message.campusNumber || '');
+        if (!campusNumber) { results.push({ featureCode: code, campusNumber: '', success: false, message: '请输入校园号码' }); continue; }
         var candidate = code ? (await db.collection('campus_records').where({ featureCode: code }).limit(1).get()).data[0] : await findCampusNumberRecord(campusNumber);
         if (!candidate) { results.push({ featureCode: code, campusNumber: campusNumber, success: false, message: '校园号码或特征码不存在' }); continue; }
-        if (campusNumber && normalizeCampusNumber(candidate.selectedNumber) !== campusNumber && normalizeCampusNumber(candidate.selectedPhone) !== campusNumber) {
-          var candidateOffer = candidate.selectedOfferId ? (await db.collection('campus_offers').where({ id: candidate.selectedOfferId }).limit(1).get()).data[0] : null;
-          if (!candidateOffer || normalizeCampusNumber(candidateOffer.phone) !== campusNumber) { results.push({ featureCode: code, campusNumber: campusNumber, success: false, message: '校园号码与订单不匹配' }); continue; }
-        }
         if (candidate.activationStatus === 'activated') { results.push({ featureCode: code, campusNumber: campusNumber, success: true, message: '该订单已经被商家确认激活' }); continue; }
         if (!String(message.activationProofFile || data.activationProofFile || '').trim()) { results.push({ featureCode: code, campusNumber: campusNumber, success: false, message: '请先提交套卡实名已激活页面' }); continue; }
         var passed = ['verified', 'success', 'passed', 'ok', '通过', '成功'].indexOf(String(message.result || 'verified').toLowerCase()) >= 0;
         if (!passed) { results.push({ featureCode: code, campusNumber: campusNumber, success: false, message: '实名验证未通过' }); continue; }
-        await db.collection('campus_records').doc(candidate._id).update({ data: { verificationStatus: 'verified', activationStatus: 'pending_merchant', status: 'completed', gridName: normalizedGrid(verifyingAccount.gridName), verifiedAt: db.serverDate(), verifiedByAccountId: verifyingAccount._id, verifiedByName: verifyingAccount.name || '', verifiedByPhone: verifyingAccount.phone || '', activationProofFile: String(message.activationProofFile || data.activationProofFile || '').trim() } });
+        await db.collection('campus_records').doc(candidate._id).update({ data: { campusNumber: campusNumber, verificationStatus: 'verified', activationStatus: 'pending_merchant', status: 'completed', gridName: normalizedGrid(verifyingAccount.gridName), verifiedAt: db.serverDate(), verifiedByAccountId: verifyingAccount._id, verifiedByName: verifyingAccount.name || '', verifiedByPhone: verifyingAccount.phone || '', activationProofFile: String(message.activationProofFile || data.activationProofFile || '').trim() } });
         results.push({ featureCode: code, campusNumber: campusNumber, success: true, message: '实名验证成功，等待商家确认激活', displayNumber: candidate.selectedNumber, schoolName: candidate.schoolName, college: candidate.college });
       }
       return ok({ results: results });
@@ -446,7 +447,7 @@ exports.main = async function (event) {
       var merchantRecord = await findCampusNumberRecord(merchantCampusNumber);
       if (!merchantRecord) return ok({ found: false, status: 'unverified', message: '未找到对应订单，暂未核验', canConfirm: false });
       var merchantVerified = merchantRecord.verificationStatus === 'verified';
-      return ok({ found: true, status: merchantVerified ? 'verified' : 'unverified', message: merchantVerified ? (merchantRecord.activationStatus === 'activated' ? '已核验并完成激活' : '已核验') : '未核验', canConfirm: merchantVerified && merchantRecord.activationStatus !== 'activated', record: { id: merchantRecord._id, name: merchantRecord.name || '', campusNumber: merchantRecord.selectedNumber || merchantRecord.selectedPhone || merchantCampusNumber, schoolName: merchantRecord.schoolName || '', college: merchantRecord.college || '', merchantName: merchantRecord.merchantName || '', merchantPhone: merchantRecord.merchantPhone || '' } });
+      return ok({ found: true, status: merchantVerified ? 'verified' : 'unverified', message: merchantVerified ? (merchantRecord.activationStatus === 'activated' ? '已核验并完成激活' : '已核验') : '未核验', canConfirm: merchantVerified && merchantRecord.activationStatus !== 'activated', record: { id: merchantRecord._id, name: merchantRecord.name || '', campusNumber: merchantRecord.campusNumber || merchantCampusNumber, schoolName: merchantRecord.schoolName || '', college: merchantRecord.college || '', merchantName: merchantRecord.merchantName || '', merchantPhone: merchantRecord.merchantPhone || '' } });
     }
     if (method === 'POST' && path === '/api/merchant/confirm-activation') {
       var confirmingMerchant = await staffAccount(data, 'merchant');
