@@ -11,5 +11,4 @@
       <view class="arrow">›</view>
     </view>
   </view>
-  <button class="secondary" bindtap="openQuickStart">打开原有云开发示例</button>
 </view>

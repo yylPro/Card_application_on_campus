@@ -1,6 +1,7 @@
 {
   "miniprogramRoot": "./",
+  "cloudfunctionRoot": "../cloudfunctions/",
   "projectname": "campus-telecom-service",
-  "appid": "touristappid",
-  "setting": { "urlCheck": false, "es6": true, "minified": true }
+  "appid": "wx373888ab591d72cc",
+  "setting": { "urlCheck": true, "es6": true, "minified": true }
 }

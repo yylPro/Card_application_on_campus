@@ -122,7 +122,13 @@ const statusTransitions = {
 };
 
 const initialDb = {
-  settings: { offlineVerificationAddress: '', offlineVerificationAddressUpdatedAt: '' },
+  settings: {
+    offlineVerificationAddress: '',
+    offlineVerificationAddressUpdatedAt: '',
+    serviceEnabled: true,
+    serviceStatusUpdatedAt: '',
+    serviceStatusUpdatedBy: ''
+  },
   schools: [{
     code: 'XXU-2026',
     name: 'XX大学',
@@ -170,6 +176,9 @@ function normalizeDb(db) {
   db.settings = db.settings && typeof db.settings === 'object' ? db.settings : {};
   if (!db.settings.offlineVerificationAddress) db.settings.offlineVerificationAddress = '';
   if (!db.settings.offlineVerificationAddressUpdatedAt) db.settings.offlineVerificationAddressUpdatedAt = '';
+  if (typeof db.settings.serviceEnabled !== 'boolean') db.settings.serviceEnabled = true;
+  if (!db.settings.serviceStatusUpdatedAt) db.settings.serviceStatusUpdatedAt = '';
+  if (!db.settings.serviceStatusUpdatedBy) db.settings.serviceStatusUpdatedBy = '';
   db.schools = Array.isArray(db.schools) ? db.schools : [];
   db.orders = Array.isArray(db.orders) ? db.orders : [];
   db.tickets = Array.isArray(db.tickets) ? db.tickets : [];
@@ -879,6 +888,12 @@ async function api(req, res, url) {
     return json(res, 200, { status: 'ok', databaseDriver: DB_DRIVER, databaseReady: Boolean(runtimeDb), time: new Date().toISOString() });
   }
 
+  const adminControlRequest = url.pathname.startsWith('/api/admin/') || url.pathname === '/api/auth/login'
+    || url.pathname === '/api/auth/session' || url.pathname === '/api/auth/logout';
+  if (!db.settings.serviceEnabled && !adminControlRequest) {
+    return json(res, 503, { error: '三端服务暂时关闭，请联系运营商', serviceUnavailable: true });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/auth/login') {
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
@@ -932,6 +947,21 @@ async function api(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/auth/session') {
     const session = sessionFor(req, 'admin');
     return json(res, 200, { authenticated: Boolean(session), user: session?.user || null, registrationEnabled: PUBLIC_REGISTRATION_ENABLED });
+  }
+
+  if (req.method === 'PATCH' && url.pathname === '/api/admin/service-status') {
+    const session = requireAdmin(req, res);
+    if (!session) return;
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    if (typeof body.enabled !== 'boolean') return json(res, 400, { error: '服务状态参数无效' });
+    const updatedAt = new Date().toISOString();
+    db.settings.serviceEnabled = body.enabled;
+    db.settings.serviceStatusUpdatedAt = updatedAt;
+    db.settings.serviceStatusUpdatedBy = session.user;
+    audit(db, body.enabled ? 'service.enabled' : 'service.disabled', session.user, 'global-settings');
+    writeDb(db);
+    return json(res, 200, { enabled: body.enabled, updatedAt, updatedBy: session.user });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/offline/login') {
@@ -1228,8 +1258,10 @@ async function api(req, res, url) {
       record.activationStatus = 'pending';
       record.subsidyStatus = 'pending';
       record.offlineLocation = db.settings.offlineVerificationAddress;
-      record.offlineFeatureCode = uniqueFeatureCode(db);
-      record.offlineAssignedAt = new Date().toISOString();
+      if (record.offlineLocation) {
+        record.offlineFeatureCode = uniqueFeatureCode(db);
+        record.offlineAssignedAt = new Date().toISOString();
+      }
     } else {
       if (!record.detail) return json(res, 400, { error: '请填写需求说明' });
       record.selectedNumber = '';
@@ -1263,23 +1295,29 @@ async function api(req, res, url) {
     if (!session) return;
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const action = body.action === 'clear' ? 'clear' : 'set';
     const verificationAddress = safe(body.verificationAddress, 160);
-    if (!verificationAddress) return json(res, 400, { error: '请输入可办理线下实名认证的地址' });
+    if (action === 'set' && !verificationAddress) return json(res, 400, { error: '请输入可办理线下实名认证的地址' });
     const updatedAt = new Date().toISOString();
-    db.settings.offlineVerificationAddress = verificationAddress;
+    db.settings.offlineVerificationAddress = action === 'clear' ? '' : verificationAddress;
     db.settings.offlineVerificationAddressUpdatedAt = updatedAt;
     let affectedOrders = 0;
     for (const record of db.orders) {
       if (!record.selectedOfferId || record.status === 'cancelled' || record.activationStatus === 'activated') continue;
-      record.offlineLocation = verificationAddress;
-      if (!record.offlineFeatureCode) record.offlineFeatureCode = uniqueFeatureCode(db);
-      record.offlineAssignedAt = updatedAt;
+      record.offlineLocation = action === 'clear' ? '' : verificationAddress;
+      if (action === 'clear') {
+        record.offlineFeatureCode = '';
+        record.offlineAssignedAt = '';
+      } else {
+        if (!record.offlineFeatureCode) record.offlineFeatureCode = uniqueFeatureCode(db);
+        record.offlineAssignedAt = updatedAt;
+      }
       record.updatedAt = updatedAt;
       affectedOrders += 1;
     }
-    audit(db, 'offline-address.updated', session.user, 'global-settings', { affectedOrders });
+    audit(db, action === 'clear' ? 'offline-address.cleared' : 'offline-address.updated', session.user, 'global-settings', { affectedOrders });
     writeDb(db);
-    return json(res, 200, { verificationAddress, updatedAt, affectedOrders });
+    return json(res, 200, { verificationAddress: db.settings.offlineVerificationAddress, updatedAt, affectedOrders });
   }
 
   if (req.method === 'GET' && url.pathname === '/api/admin/overview') {
@@ -1289,6 +1327,11 @@ async function api(req, res, url) {
       offlineSettings: {
         verificationAddress: db.settings.offlineVerificationAddress,
         updatedAt: db.settings.offlineVerificationAddressUpdatedAt
+      },
+      serviceStatus: {
+        enabled: db.settings.serviceEnabled,
+        updatedAt: db.settings.serviceStatusUpdatedAt,
+        updatedBy: db.settings.serviceStatusUpdatedBy
       },
       schools: db.schools.filter((item) => item.code !== TEST_SCHOOL_CODE),
       orders: db.orders.slice(-300).reverse(),
@@ -1737,7 +1780,7 @@ const publicStaticFiles = new Set([
   'admin-login.html', 'admin-login.js', 'admin-register.html', 'admin-register.js',
   'operator.html', 'operator.js', 'redeem.html', 'redeem.js',
   'offline.html', 'offline.js', 'offline-login.html', 'offline-login.js',
-  'offline-register.html', 'offline-register.js'
+  'offline-register.html', 'offline-register.js', 'service-unavailable.html'
 ]);
 const publicMiniprogramExtensions = new Set(['.js', '.json', '.wxml', '.wxss']);
 
@@ -1750,6 +1793,12 @@ function isPublicStaticFile(file) {
 
 function staticFile(req, res, url) {
   let pathname = decodeURIComponent(url.pathname);
+  const db = readDb();
+  const adminPath = pathname === '/admin' || pathname === '/admin/' || pathname.startsWith('/admin/');
+  const publicServicePath = pathname === '/' || pathname === '/entry' || pathname === '/service'
+    || pathname.startsWith('/service/') || pathname.startsWith('/q/') || pathname === '/offline'
+    || pathname.startsWith('/offline/');
+  if (!db.settings.serviceEnabled && publicServicePath && !adminPath) pathname = '/service-unavailable.html';
   if (pathname === '/') pathname = '/index.html';
   if (pathname === '/entry') pathname = '/dispatch.html';
   if (pathname === '/service') pathname = '/index.html';

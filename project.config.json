@@ -45,8 +45,8 @@
     "disableSWC": true
   },
   "appid": "wx373888ab591d72cc",
-  "projectname": "quickstart-wx-cloud",
-  "libVersion": "2.20.1",
+  "projectname": "校园线上预约小程序",
+  "libVersion": "3.17.0",
   "cloudfunctionTemplateRoot": "cloudfunctionTemplate/",
   "condition": {
     "search": {

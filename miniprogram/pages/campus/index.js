@@ -10,7 +10,4 @@ Page({
     const path = event.currentTarget.dataset.path;
     wx.navigateTo({ url: path });
   },
-  openQuickStart() {
-    wx.navigateTo({ url: "/pages/index/index" });
-  },
 });

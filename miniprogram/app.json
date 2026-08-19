@@ -3,13 +3,7 @@
     "pages/campus/index",
     "pages/campus/student",
     "pages/campus/operator",
-    "pages/campus/outlet",
-    "pages/home/home",
-    "pages/form/form",
-    "pages/records/records",
-    "pages/confirm/confirm",
-    "pages/index/index",
-    "pages/example/index"
+    "pages/campus/outlet"
   ],
   "window": {
     "backgroundColor": "#F6F6F6",

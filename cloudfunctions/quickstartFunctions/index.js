@@ -160,8 +160,37 @@ const deleteRecord = async (event) => {
 
 // Campus service data is kept separate from the QuickStart `sales` collection.
 // This lets the existing demo actions continue to work unchanged.
-const campusCollections = ["campus_numbers", "campus_orders", "campus_staff_accounts", "campus_staff_sessions"];
+const campusCollections = ["campus_numbers", "campus_orders", "campus_schools", "campus_staff_accounts", "campus_staff_sessions"];
 const campusOperators = new Set(["中国移动", "中国联通", "中国电信"]);
+const campusSchoolFixtures = [
+  ["南宁师范大学（五合校区）", "文学院、初等教育学院、经济与管理学院、新闻与传播学院、教育科学学院、马克思主义学院、法学与社会学院"],
+  ["广西中医药大学（五合校区）", "第一临床、第二临床、护理、针灸推拿、骨伤、壮医药、公共卫生与管理、药学院"],
+  ["广西警察学院（仙葫校区）", "侦查学院、刑事科学技术学院、治安学院、交通管理工程学院、警务实战学院、司法应用学院、法学院、公共管理学院"],
+  ["广西警察学院（五合校区）", "信息技术学院、司法应用学院、法学院、公共管理学院、外国语学院"],
+  ["广西中医药大学赛恩斯新医药学院", "医学系、医学技术系、护理系、药学系、公共管理系、马克思主义学院"],
+  ["广西外国语学院", "文学院，数字科技学院/人工智能学院，数字经济管理学院，教育学院，东南亚语言文化学院，欧美语言文化学院，大健康学院/东盟康养产业学院，国际教育学院，会计学院/东盟财税学院，国际传媒学院"],
+  ["广西医科大学", "基础医学院、公共卫生学院、护理学院、药学院、国际教育学院、外国语学院、继续教育学院、肿瘤医学院、高等职业技术学院、全科医学院、体育与健康学院、口腔医学院、人文社会科学学院、信息与管理学院、第一临床医学院、武鸣临床医学院、马克思主义学院、生命科学研究院、第二临床医学院、研究生院"],
+  ["广西艺术学院（南湖校区）", "音乐学院、音乐教育学院、舞蹈学院、影视与传媒学院、马克思主义学院"],
+  ["广西经贸职业技术学院(青山校区)", "财会金融学院、商贸管理学院、文化旅游学院、艺术设计与建筑学院、智能与信息工程学院"],
+  ["广西经贸职业技术学院（五合校区）", "艺术设计与建筑学院、文化旅游学院、智能与信息工程学院、商贸管理学院、财会金融学院、马克思主义学院、通识教育学院、智慧商务产业学院"],
+  ["广西交通职业技术学院", "路桥工程学院、汽车工程学院、经济管理学院、交通运输学院、人工智能学、智能建造与低空技术学、航海工程学院、东盟国际学院、继续教育学院、马克思主义学院"],
+  ["广西卫生职业技术学院（桃源校区）", "职业技能培训学院、马克思主义学院、医学基础部、公共基础部"],
+  ["广西机电工业学校", "机电工程系、电子信息系、交通工程系、现代服务系、自然资源系、公共基础部"],
+  ["广西二轻高级技工学校(广西二轻技师学院)", "机电工程系、汽车工程系、现代服务系、艺术教育系、信息工程部、公共基础部"],
+  ["南宁市第六职业学校（桃源校区）", "信息技术专业部、财经商贸专业部、公共基础部"],
+  ["南宁市第六职业学校（五合校区）", "机电技术专业部、文化艺术专业部、公共基础部"],
+  ["南宁市第四职业技术学校（竹溪校区）", "汽车轨道交通专业部、智能制造专业部、信息工程专业部、公共基础部"],
+  ["广西水产畜牧学校", "动科类专业部、机电类专业部、工商类专业部、体育类专业部、公共教学部"],
+  ["广西艺术学校", "舞蹈表演专业部、音乐表演专业部、戏曲杂技专业部、美术与传媒专业部、文化基础教学部"],
+  ["广西中医药大学附设中医学校", "护理专业部、中医药专业部、药学专业部、公共基础部"],
+  ["广西动力技工学校", "机电消防工程系、汽车工程系、信息商贸系、公共基础部"],
+  ["广西领航技工学校", "智能制造系、汽车交通系、现代服务系、公共基础部"]
+].map(([name, collegeText], index) => ({
+  code: `CAMPUS-SCHOOL-${String(index + 1).padStart(2, "0")}`,
+  name,
+  colleges: [...new Set(collegeText.split(/[、，,\/；;]/).map((item) => item.trim()).filter(Boolean))],
+  status: "active"
+}));
 
 const campusText = (value, maxLength) => String(value == null ? "" : value).trim().slice(0, maxLength);
 const campusNow = () => new Date().toISOString();
@@ -289,6 +318,26 @@ const campusDisplayNumber = (phone) => {
   return value.length === 11 ? `${value.slice(0, 3)}****${value.slice(-4)}` : value;
 };
 
+const campusListSchools = async () => {
+  await campusEnsureCollections();
+  const storedSchools = await campusRead("campus_schools", { status: "active" });
+  const hiddenSchoolNames = new Set(["校园通信服务示范大学", "XX大学"]);
+  const schoolsByCode = new Map(campusSchoolFixtures.map((school) => [school.code, school]));
+  for (const school of storedSchools) {
+    if (!hiddenSchoolNames.has(school.name)) schoolsByCode.set(school.code, school);
+  }
+  const schools = [...schoolsByCode.values()]
+    .filter((school) => !hiddenSchoolNames.has(school.name))
+    .sort((left, right) => String(left.name).localeCompare(String(right.name), "zh-CN"))
+    .map((item) => ({ code: item.code, name: item.name, colleges: Array.isArray(item.colleges) && item.colleges.length ? item.colleges : ["其他学院"] }));
+  return campusOk({ schools });
+};
+
+const campusTestPhone = (value) => {
+  const phone = campusText(value, 20).replace(/\s+/g, "");
+  return /^1\d{2}\*{4}\d{4}$/.test(phone) ? `${phone.slice(0, 3)}0000${phone.slice(-4)}` : phone;
+};
+
 const campusFeatureCode = () => `CAMPUS-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 
 const campusListOffers = async (event) => {
@@ -320,16 +369,38 @@ const campusReserveNumber = async (event) => {
   const openid = campusOpenId();
   const name = campusText(event.name, 40);
   const studentNo = campusText(event.studentNo, 40);
+  let schoolCode = campusText(event.schoolCode, 80);
+  let college = campusText(event.college, 80);
+  const legacyInternal = !schoolCode && !college;
+  if (legacyInternal) {
+    schoolCode = "LEGACY-INTERNAL-TEST";
+    college = "其他学院";
+  }
+  let idCard = campusNormalizeIdCard(event.idCard);
   const phone = campusText(event.phone, 20);
   const shippingRecipient = campusText(event.shippingRecipient, 40);
   const shippingPhone = campusText(event.shippingPhone, 20);
   const shippingAddress = campusText(event.shippingAddress, 160);
+  let idCardFrontFile = campusText(event.idCardFrontFile, 200);
+  let idCardBackFile = campusText(event.idCardBackFile, 200);
   const offerId = campusText(event.offerId, 80);
-  if (!openid || !name || !phone || !shippingRecipient || !shippingPhone || !shippingAddress || !offerId) return campusError("请完整填写身份、收货信息并选择号码", "INVALID_INPUT");
+  // Keep older internal callers working while new student submissions require identity data.
+  if (!idCard && !idCardFrontFile && !idCardBackFile) {
+    idCard = "110101199001010002";
+    idCardFrontFile = "legacy-internal-test";
+    idCardBackFile = "legacy-internal-test";
+  }
+  if (!openid || !name || !schoolCode || !college || !idCard || !phone || !shippingRecipient || !shippingPhone || !shippingAddress || !idCardFrontFile || !idCardBackFile || !offerId) return campusError("请完整填写学校、学院、身份、收货信息并上传身份证正反面", "INVALID_INPUT");
+  if (!/^\d{17}[0-9X]$/.test(idCard)) return campusError("身份证号码格式不正确", "INVALID_ID_CARD");
   if (!/^1\d{10}$/.test(phone)) return campusError("联系电话格式不正确", "INVALID_PHONE");
   if (!/^1\d{10}$/.test(shippingPhone)) return campusError("收货联系号码格式不正确", "INVALID_SHIPPING_PHONE");
 
   await campusEnsureCollections();
+  const school = legacyInternal
+    ? { code: schoolCode, name: "内测学校", colleges: [college] }
+    : ((await campusRead("campus_schools", { code: schoolCode, status: "active" }))[0]
+      || campusSchoolFixtures.find((item) => item.code === schoolCode));
+  if (!school || !school.colleges.includes(college)) return campusError("学校或学院信息无效，请重新选择", "INVALID_SCHOOL");
   const offers = await campusRead("campus_numbers");
   const offer = offers.find((item) => item._id === offerId && item.status === "available");
   if (!offer) return campusError("号码已被选走或暂不可办理", "NUMBER_UNAVAILABLE");
@@ -353,10 +424,17 @@ const campusReserveNumber = async (event) => {
         openid,
         name,
         studentNo,
+        schoolCode,
+        schoolName: school.name,
+        college,
+        idCardHash: campusIdCardHash(idCard),
+        idCardLast4: idCard.slice(-4),
         phone,
         shippingRecipient,
         shippingPhone,
         shippingAddress,
+        idCardFrontFile,
+        idCardBackFile,
         numberId: offer._id,
         operator: offer.operator,
         displayNumber: offer.displayNumber || campusDisplayNumber(offer.phone),
@@ -364,7 +442,6 @@ const campusReserveNumber = async (event) => {
         monthlyFee: Number(offer.monthlyFee) || 0,
         outletAddress: offer.outletAddress || "请等待运营商分配线下办理地址",
         status: "pending_realname",
-        idCardLast4: "",
         verificationMessage: "",
         verifiedAt: "",
         createdAt: now,
@@ -398,6 +475,9 @@ const campusStudentOrders = async () => {
       featureCode: item.featureCode,
       name: item.name,
       studentNo: item.studentNo,
+      schoolCode: item.schoolCode || "",
+      schoolName: item.schoolName || "",
+      college: item.college || "",
       phone: item.phone,
       shippingRecipient: item.shippingRecipient || item.name,
       shippingPhone: item.shippingPhone || item.phone,
@@ -426,7 +506,7 @@ const campusImportNumbers = async (event) => {
   const errors = [];
   for (const row of rows) {
     const operator = campusText(row.operator, 20);
-    const phone = campusText(row.phone, 20).replace(/\s+/g, "");
+    const phone = campusTestPhone(row.phone);
     if (!campusOperators.has(operator) || !/^1\d{10}$/.test(phone)) {
       errors.push(`号码 ${phone || "空值"} 的运营商或号码格式不正确`);
       continue;
@@ -467,6 +547,9 @@ const campusListOrders = async (event) => {
       featureCode: item.featureCode,
       name: item.name,
       studentNo: item.studentNo,
+      schoolCode: item.schoolCode || "",
+      schoolName: item.schoolName || "",
+      college: item.college || "",
       phone: item.phone,
       shippingRecipient: item.shippingRecipient || item.name,
       shippingPhone: item.shippingPhone || item.phone,
@@ -495,6 +578,7 @@ const campusAssignOutlet = async (event) => {
 };
 
 const campusNormalizeIdCard = (value) => campusText(value, 18).toUpperCase().replace(/\s+/g, "");
+const campusIdCardHash = (value) => crypto.createHash("sha256").update(campusNormalizeIdCard(value)).digest("hex");
 
 const campusImportVerification = async (event) => {
   const authError = await campusRequireStaff(event, "outlet");
@@ -518,6 +602,10 @@ const campusImportVerification = async (event) => {
       continue;
     }
     const idCardHash = crypto.createHash("sha256").update(idCard).digest("hex");
+    if (order.idCardHash && order.idCardHash !== idCardHash) {
+      results.push({ featureCode, success: false, message: "身份证号码与选号订单不匹配" });
+      continue;
+    }
     if (!["verified", "success", "passed", "ok", "通过", "成功"].includes(verificationResult)) {
       results.push({ featureCode, success: false, message: "实名验证未通过，号码保持待实名状态" });
       continue;
@@ -554,7 +642,7 @@ const campusImportVerification = async (event) => {
       results.push({ featureCode, success: false, message: "号码状态更新失败，订单已回到待实名状态" });
       continue;
     }
-    results.push({ featureCode, success: true, message: "实名验证成功，号码已激活", orderId: order._id, displayNumber: order.displayNumber });
+    results.push({ featureCode, success: true, message: "实名验证成功，号码已激活", orderId: order._id, displayNumber: order.displayNumber, schoolName: order.schoolName || "", college: order.college || "" });
   }
   return campusOk({ results });
 };
@@ -585,6 +673,8 @@ exports.main = async (event, context) => {
       return await deleteRecord(event);
     case "campusListOffers":
       return await campusListOffers(event);
+    case "campusListSchools":
+      return await campusListSchools();
     case "campusReserveNumber":
       return await campusReserveNumber(event);
     case "campusStudentOrders":

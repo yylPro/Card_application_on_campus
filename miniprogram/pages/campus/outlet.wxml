@@ -4,6 +4,6 @@
     <view class="section-head"><view class="section-title">导入实名验证消息</view><button size="mini" bindtap="logout">退出登录</button></view><view class="section-copy">每行一条：特征码，身份证号码，验证结果。学生特征码只用于匹配订单，不用于登录。</view>
     <view class="panel"><textarea class="textarea import-area" data-key="messageText" value="{{messageText}}" bindinput="setField" placeholder="CAMPUS-AB12CD34，身份证号码，verified" /><button class="primary" bindtap="importMessages">导入并激活</button></view>
     <view wx:if="{{results.length}}" class="section-head"><view class="section-title">处理结果</view></view>
-    <view wx:for="{{results}}" wx:key="featureCode" class="record"><view class="record-top"><text>{{item.featureCode}}</text><text class="status {{item.success ? 'activated' : 'failed'}}">{{item.success ? '成功' : '失败'}}</text></view><view class="record-line">{{item.message}}</view><view wx:if="{{item.displayNumber}}" class="record-line">号码：{{item.displayNumber}}</view></view>
+    <view wx:for="{{results}}" wx:key="featureCode" class="record"><view class="record-top"><text>{{item.featureCode}}</text><text class="status {{item.success ? 'activated' : 'failed'}}">{{item.success ? '成功' : '失败'}}</text></view><view class="record-line">{{item.message}}</view><view wx:if="{{item.schoolName}}" class="record-line">学校：{{item.schoolName}}　学院：{{item.college}}</view><view wx:if="{{item.displayNumber}}" class="record-line">号码：{{item.displayNumber}}</view></view>
   </block>
 </view>
