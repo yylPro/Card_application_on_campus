@@ -14,6 +14,7 @@
         <form id="offlineLoginForm">
           <label>授权手机号<input name="phone" type="tel" inputmode="numeric" autocomplete="username" maxlength="11" pattern="1[0-9]{10}" required placeholder="请输入已授权手机号" /></label>
           <label>密码<input name="password" type="password" autocomplete="current-password" minlength="9" maxlength="15" required placeholder="9-15位，含大小写字母和数字" /></label>
+          <label class="consent"><input name="rememberPassword" type="checkbox" value="1" /><span>记住手机号和密码</span></label>
           <button class="primary-button" type="submit">登录实体端</button>
         </form>
         <p class="login-hint">尚未注册？<a href="/offline/register">使用授权手机号注册</a></p>

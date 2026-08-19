@@ -211,6 +211,15 @@ test('二维码、分流、H5 与小程序入口契约可用', async () => {
   const h5 = await request('/service/XXU-2026');
   assert.equal(h5.response.status, 200);
   assert.match(h5.body, /校园通信服务/);
+  assert.doesNotMatch(h5.body, /student-login\.js/);
+  const h5Script = await request('/app.js');
+  assert.equal(h5Script.response.status, 200);
+  assert.doesNotMatch(h5Script.body, /location\.replace\('\/student\/login'\)/);
+  for (const loginPath of ['/admin/login', '/offline/login', '/merchant']) {
+    const loginPage = await request(loginPath);
+    assert.equal(loginPage.response.status, 200);
+    assert.match(loginPage.body, /记住手机号和密码/);
+  }
   const miniProgramConfig = await request('/miniprogram/app.json');
   assert.equal(miniProgramConfig.response.status, 200);
   assert.ok(miniProgramConfig.body.pages.includes('pages/home/home'));

@@ -18,11 +18,6 @@ function openModal(modal) { modal.hidden = false; document.body.classList.add('m
 function closeModals() { document.querySelectorAll('.modal-backdrop').forEach((modal) => { modal.hidden = true; }); document.body.classList.remove('modal-open'); }
 async function json(response, fallback) { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || fallback); return body; }
 
-async function loadSession() {
-  const session = await fetch('/api/student/session').then((response) => response.json());
-  if (!session.authenticated) return location.replace('/student/login');
-  if (session.phone) { serviceForm.elements.phone.value = session.phone; serviceForm.elements.phone.readOnly = true; lookupForm.elements.phone.value = session.phone; lookupForm.elements.phone.readOnly = true; }
-}
 function fillSchool(school) {
   if (!school) return;
   selectedSchool = school; schoolCode = school.code; selectedSchoolCode.value = school.code; schoolSearch.value = school.name; schoolResults.replaceChildren();
@@ -74,4 +69,5 @@ function renderRecords(records) {
   target.innerHTML = records.length ? records.map((record) => `<article class="record-item"><div><strong>${escapeHtml(record.type)}</strong><small>${escapeHtml(record.id)}</small></div><span class="status-chip">${escapeHtml(statusText(record))}</span>${record.offline ? `<div class="offline-instruction ${record.verificationStatus === 'verified' ? 'verified' : ''}"><strong>${record.verificationStatus === 'verified' ? '已完成实名核验' : '请前往线下实名核验'}</strong><span>${escapeHtml(record.offline.location || '等待运营商分配地址')}</span><code>${escapeHtml(record.offline.featureCode || '待分配')}</code></div>` : '<small>线下地址和特征码待运营商分配</small>'}<small>激活状态：${escapeHtml(record.activationStatus === 'activated' ? '已激活' : record.activationStatus === 'pending_merchant' ? '待商家激活' : '待处理')}</small></article>`).join('') : '<p class="empty-state">暂无办理记录。</p>';
 }
 lookupForm.addEventListener('submit', async (event) => { event.preventDefault(); const data = Object.fromEntries(new FormData(lookupForm).entries()); try { const result = await json(await fetch('/api/student/records', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: data.phone, password: data.password }) }), '查询失败，请稍后重试'); renderRecords(result.records || []); } catch (error) { showToast(error.message, true); } });
-loadSession().catch(() => location.replace('/student/login')); loadSchool();
+// 学生端与小程序一致，打开服务入口即可预约，不强制跳转学生登录页。
+loadSchool();

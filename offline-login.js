@@ -1,5 +1,12 @@
 const form = document.getElementById('offlineLoginForm');
 const toast = document.getElementById('toast');
+const rememberInput = form.elements.rememberPassword;
+const rememberKey = 'campus_offline_login';
+
+try {
+  const saved = JSON.parse(localStorage.getItem(rememberKey) || 'null');
+  if (saved?.phone) { form.elements.phone.value = saved.phone; form.elements.password.value = saved.password || ''; rememberInput.checked = true; }
+} catch { /* Ignore unavailable or invalid browser storage. */ }
 
 function showToast(message) {
   toast.textContent = message;
@@ -28,6 +35,8 @@ form.addEventListener('submit', async (event) => {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || '登录失败');
+    if (rememberInput.checked) localStorage.setItem(rememberKey, JSON.stringify({ phone: form.elements.phone.value.trim(), password: form.elements.password.value }));
+    else localStorage.removeItem(rememberKey);
     location.replace('/offline');
   } catch (error) {
     showToast(error.message || '网络连接失败，请稍后重试');

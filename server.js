@@ -1351,7 +1351,8 @@ async function api(req, res, url) {
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
     const studentSession = sessionFor(req, 'student');
-    if (!studentSession && process.env.NODE_ENV !== 'test') return json(res, 401, { error: '请先登录学生账户后再提交' });
+    const publicCampusAccountOrder = url.pathname === '/api/orders' && String(body.type || '') === '校园账号预约';
+    if (!studentSession && process.env.NODE_ENV !== 'test' && !publicCampusAccountOrder) return json(res, 401, { error: '请先登录学生账户后再提交' });
     const schoolCode = safe(body.schoolCode, 40);
     const school = db.schools.find((item) => item.code === schoolCode && item.status === 'active');
     if (!school) return json(res, 400, { error: '学校信息无效，请从统一入口重新选择学校' });
@@ -1405,7 +1406,7 @@ async function api(req, res, url) {
       ratingComment: ''
     };
     if (!record.name) return json(res, 400, { error: '请输入姓名' });
-    if (!studentSession && process.env.NODE_ENV !== 'test' && !validPassword(body.password)) return json(res, 400, { error: '办理密码需为 9-15 位且包含大小写字母和数字' });
+    if (!studentSession && process.env.NODE_ENV !== 'test' && !publicCampusAccountOrder && !validPassword(body.password)) return json(res, 400, { error: '办理密码需为 9-15 位且包含大小写字母和数字' });
     if (validPassword(body.password)) record.passwordHash = hashPassword(body.password);
     if (!validIdCard(record.idCard)) return json(res, 400, { error: '身份证号格式或校验位不正确，请核对后重试' });
     if (!record.college) return json(res, 400, { error: '请输入所属学院' });

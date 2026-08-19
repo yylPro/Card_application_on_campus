@@ -2,6 +2,8 @@ const form = document.getElementById('loginForm');
 const toast = document.getElementById('toast');
 const phoneInput = form.elements.username;
 const passwordInput = form.elements.password;
+const rememberInput = form.elements.rememberPassword;
+const rememberKey = 'campus_admin_login';
 phoneInput.name = 'phone';
 phoneInput.type = 'tel';
 phoneInput.inputMode = 'numeric';
@@ -21,6 +23,11 @@ function showToast(message, isError = false) {
   toast.classList.add('show');
   window.setTimeout(() => toast.classList.remove('show'), 3200);
 }
+
+try {
+  const saved = JSON.parse(localStorage.getItem(rememberKey) || 'null');
+  if (saved?.phone) { phoneInput.value = saved.phone; passwordInput.value = saved.password || ''; rememberInput.checked = true; }
+} catch { /* Ignore unavailable or invalid browser storage. */ }
 
 fetch('/api/auth/session')
   .then((response) => response.json())
@@ -53,6 +60,8 @@ form.addEventListener('submit', async (event) => {
       throw new Error(response.status >= 500 ? '登录服务暂时不可用，请稍后重试' : '登录响应异常，请稍后重试');
     }
     if (!response.ok) throw new Error(result.error || '登录失败');
+    if (rememberInput.checked) localStorage.setItem(rememberKey, JSON.stringify({ phone: phoneInput.value.trim(), password: passwordInput.value }));
+    else localStorage.removeItem(rememberKey);
     location.replace('/admin');
   } catch (error) {
     showToast(error.message, true);
