@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>商家兑换端 · 校园通信服务</title><link rel="stylesheet" href="/styles.css" /></head>
+  <body class="login-page"><main class="login-shell"><section class="login-panel">
+    <a class="brand" href="/staff"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>校园通信服务</span></a>
+    <div class="login-copy"><p class="eyebrow">商家兑换端</p><h1 id="merchantTitle">登录商家账号</h1><p id="merchantIntro">查询已经完成线下实名核验的订单，并确认激活。</p></div>
+    <form id="merchantAuthForm"><label id="merchantNameLabel" hidden>工作人员姓名<input name="name" maxlength="80" placeholder="请输入姓名" /></label><label>授权手机号<input name="phone" type="tel" inputmode="numeric" maxlength="11" pattern="1[0-9]{10}" required placeholder="请输入已授权手机号" /></label><label>密码<input name="password" type="password" minlength="9" maxlength="15" required placeholder="9-15 位，含大小写字母和数字" /></label><label id="merchantConfirmLabel" hidden>确认密码<input name="confirmPassword" type="password" minlength="9" maxlength="15" placeholder="再次输入密码" /></label><button class="primary-button" id="merchantAuthSubmit" type="submit">登录</button></form>
+    <p class="login-hint" id="merchantSwitch">没有账号？<button class="text-button" type="button">注册</button></p>
+    <section id="merchantWorkspace" hidden><hr /><p class="eyebrow">兑换查询</p><form id="merchantQueryForm"><label>校园号码<input name="campusNumber" required placeholder="请输入线下核验登记的校园号码" /></label><button class="primary-button" type="submit">查询订单</button></form><div id="merchantResult" class="lookup-results"></div><button class="text-button" id="merchantLogout" type="button">退出登录</button></section>
+  </section></main><div class="toast" id="toast" role="status"></div><script src="/merchant.js"></script></body>
+</html>

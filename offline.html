@@ -16,20 +16,21 @@
       <section class="offline-heading">
         <p class="eyebrow">线下实体端</p>
         <h1>实名验证消息导入</h1>
-        <p>无论单条登记还是批量导入，系统只激活特征码和完整身份证号码均与选号订单一致的记录。</p>
+        <p>核验特征码、校园号码和身份证信息后，系统将订单转交商家确认激活。</p>
       </section>
       <section class="offline-manual">
         <div><h2>登记单条实名结果</h2><p>工作人员核对学生本人和身份证原件后，录入学生出示的特征码。</p></div>
         <form id="offlineManualForm">
-          <div class="form-row"><label>学生特征码<input name="featureCode" maxlength="40" autocomplete="off" required placeholder="请输入特征码" /></label><label>身份证号码<input name="idCard" maxlength="18" pattern="[0-9]{17}[0-9Xx]" autocomplete="off" required placeholder="请输入完整身份证号" /></label></div>
+          <div class="form-row"><label>学生特征码<input name="featureCode" maxlength="40" autocomplete="off" required placeholder="请输入特征码" /></label><label>校园号码<input name="campusNumber" maxlength="80" autocomplete="off" required placeholder="请输入校园号码" /></label></div>
+          <label>身份证号码<input name="idCard" maxlength="18" pattern="[0-9]{17}[0-9Xx]" autocomplete="off" required placeholder="请输入完整身份证号" /></label>
           <label>实名验证消息/流水号（可选）<input name="reference" maxlength="200" placeholder="例如：现场核验流水号" /></label>
-          <button class="primary-button" type="submit">匹配学生与选号号码</button>
+          <button class="primary-button" type="submit">匹配学生订单</button>
         </form>
       </section>
       <section class="offline-match" id="offlineMatch" hidden aria-live="polite">
-        <div><p class="eyebrow">匹配成功</p><h2>请工作人员核对后确认激活</h2></div>
+        <div><p class="eyebrow">匹配成功</p><h2>请工作人员核对后提交实名结果</h2></div>
         <div class="offline-match-detail" id="offlineMatchDetail"></div>
-        <div class="offline-match-actions"><button class="outline-button" id="cancelOfflineMatch" type="button">返回重填</button><button class="primary-button" id="confirmOfflineActivation" type="button">确认实名并激活</button></div>
+        <div class="offline-match-actions"><button class="outline-button" id="cancelOfflineMatch" type="button">返回重填</button><button class="primary-button" id="confirmOfflineActivation" type="button">提交实名核验</button></div>
       </section>
       <section class="offline-import">
         <div>
@@ -38,7 +39,7 @@
         </div>
         <form id="offlineImportForm">
           <label>实名验证 Excel<input type="file" name="verificationFile" accept=".xlsx,.xls,.csv" required /></label>
-          <button class="primary-button" type="submit">导入并匹配激活</button>
+          <button class="primary-button" type="submit">导入并提交实名核验</button>
         </form>
       </section>
       <section class="offline-result" id="offlineResult" hidden aria-live="polite"></section>

@@ -171,6 +171,7 @@ before(async () => {
       DATA_FILE: path.join(tempDir, 'db.json'),
       ACTIVATION_EXPORT_KEY: Buffer.alloc(32, 7).toString('base64'),
       ID_IMAGE_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString('base64'),
+      MERCHANT_AUTHORIZED_PHONE_HASHES: 'b709814b319a544a5d6902e30ec283b2f0623626ab8e05608eae8ddb5168add1',
       SMS_WEBHOOK_URL: `${integrationUrl}/sms`,
       SCHOOL_VERIFY_URL: `${integrationUrl}/school-verify`
     },
@@ -504,6 +505,83 @@ test('线下实体端使用授权手机号注册，且仅凭特征码和身份�
   assert.equal(filteredInResponse.status, 200);
   const filteredInWorkbook = XLSX.read(Buffer.from(await filteredInResponse.arrayBuffer()), { type: 'buffer' });
   assert.ok(XLSX.utils.sheet_to_json(filteredInWorkbook.Sheets['已实名激活名单']).some((item) => item.服务编号 === created.body.record.id));
+});
+
+test('校园账号预约与小程序一致地完成线下核验、商家激活和组合导出', async () => {
+  const admin = await adminCookie();
+  const address = await request('/api/admin/offline-settings', {
+    method: 'PATCH', cookie: admin, body: { verificationAddress: '校园南门实名服务点' }
+  });
+  assert.equal(address.response.status, 200);
+
+  const phone = '13700000010';
+  const idCard = idCardFor(phone);
+  const code = await testCode(phone, 'submit');
+  const created = await request('/api/orders', {
+    method: 'POST',
+    body: {
+      schoolCode: 'XXU-2026', name: '校园账号学生', studentNo: 'CAMPUS-2026-01', idCard,
+      college: '信息工程学院', phone, code, address: '东区宿舍 2 栋 202',
+      type: '校园账号预约', detail: '校园账号预约', serviceConsent: true, marketingConsent: false
+    }
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.record.verificationStatus, 'pending_manual');
+
+  const overview = await request('/api/admin/overview', { cookie: admin });
+  const pending = overview.body.orders.find((item) => item.id === created.body.record.id);
+  assert.equal(pending.activationStatus, 'pending');
+  assert.equal(pending.offlineLocation, '校园南门实名服务点');
+  assert.match(pending.offlineFeatureCode, /^[A-Z0-9_-]{8}$/);
+
+  const offlineLogin = await request('/api/offline/login', {
+    method: 'POST', body: { phone: '18500000001', password: 'OfflinePass1' }
+  });
+  assert.equal(offlineLogin.response.status, 200);
+  const offline = offlineLogin.response.headers.get('set-cookie').split(';')[0];
+  const campusNumber = 'CAMPUS-NO-2026-01';
+  const matched = await request('/api/offline/matches', {
+    method: 'POST', cookie: offline,
+    body: { featureCode: pending.offlineFeatureCode, campusNumber, idCard }
+  });
+  assert.equal(matched.response.status, 200);
+  const verified = await request('/api/offline/verifications', {
+    method: 'POST', cookie: offline,
+    body: { matchToken: matched.body.matchToken, campusNumber, reference: '校园账号实名流水-01' }
+  });
+  assert.equal(verified.response.status, 201);
+  assert.equal(verified.body.record.activationStatus, 'pending_merchant');
+
+  const merchantRegister = await request('/api/merchant/register', {
+    method: 'POST', body: { phone: '18600000002', name: '校园商家', password: 'MerchantPass1', confirmPassword: 'MerchantPass1' }
+  });
+  assert.equal(merchantRegister.response.status, 201);
+  const merchant = merchantRegister.response.headers.get('set-cookie').split(';')[0];
+  const merchantQuery = await request('/api/merchant/query', {
+    method: 'POST', cookie: merchant, body: { campusNumber }
+  });
+  assert.equal(merchantQuery.response.status, 200);
+  assert.equal(merchantQuery.body.canConfirm, true);
+  const confirmed = await request('/api/merchant/confirm-activation', {
+    method: 'POST', cookie: merchant, body: { campusNumber }
+  });
+  assert.equal(confirmed.response.status, 200);
+  assert.equal(confirmed.body.record.activationStatus, 'activated');
+
+  const finalOverview = await request('/api/admin/overview', { cookie: admin });
+  const finalRecord = finalOverview.body.orders.find((item) => item.id === created.body.record.id);
+  assert.equal(finalRecord.campusNumber, campusNumber);
+  assert.equal(finalRecord.activationStatus, 'activated');
+  assert.equal(finalRecord.verificationStatus, 'verified');
+
+  const exportResponse = await fetch(`${baseUrl}/api/admin/export-selected.xlsx?kinds=activated,pending`, { headers: { Cookie: admin } });
+  assert.equal(exportResponse.status, 200);
+  const workbook = XLSX.read(Buffer.from(await exportResponse.arrayBuffer()), { type: 'buffer' });
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets['订单导出']);
+  const exported = rows.find((item) => item.服务编号 === created.body.record.id);
+  assert.equal(exported.校园号码, campusNumber);
+  assert.equal(exported.激活状态, '已激活');
+  for (const pathname of ['/staff', '/merchant']) assert.equal((await request(pathname)).response.status, 200);
 });
 
 test('默认线下地址自动分配给选号订单，之后修改或清空默认地址不影响已发出的特征码', async () => {

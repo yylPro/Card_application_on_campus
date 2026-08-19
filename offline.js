@@ -6,6 +6,7 @@ const matchPanel = document.getElementById('offlineMatch');
 const matchDetail = document.getElementById('offlineMatchDetail');
 let pendingMatchToken = '';
 let pendingReference = '';
+let pendingCampusNumber = '';
 
 function showToast(message, isError = false) {
   toast.textContent = message;
@@ -52,21 +53,23 @@ manualForm.addEventListener('submit', async (event) => {
     if (!response.ok) throw new Error(result.error || '登记失败');
     pendingMatchToken = result.matchToken;
     pendingReference = data.reference || '';
-    matchDetail.innerHTML = `<dl><div><dt>学生姓名</dt><dd>${escapeHtml(result.record.name)}</dd></div><div><dt>原联系电话</dt><dd>${escapeHtml(result.record.phone)}</dd></div><div><dt>备用联系电话</dt><dd>${escapeHtml(result.record.backupPhone || '未填写')}</dd></div><div><dt>学校</dt><dd>${escapeHtml(result.record.schoolName)}</dd></div><div><dt>运营商</dt><dd>${escapeHtml(result.record.operator)}</dd></div><div><dt>学生选号号码</dt><dd>${escapeHtml(result.record.selectedNumber)}</dd></div></dl>`;
+    pendingCampusNumber = data.campusNumber || result.record.campusNumber || '';
+    matchDetail.innerHTML = `<dl><div><dt>学生姓名</dt><dd>${escapeHtml(result.record.name)}</dd></div><div><dt>联系电话</dt><dd>${escapeHtml(result.record.phone)}</dd></div><div><dt>学校</dt><dd>${escapeHtml(result.record.schoolName)}</dd></div><div><dt>校园号码</dt><dd>${escapeHtml(pendingCampusNumber)}</dd></div></dl>`;
     matchPanel.hidden = false;
     matchPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    showToast('已匹配到学生和选号号码，请核对');
+    showToast('已匹配到学生订单，请核对');
   } catch (error) {
     showToast(error.message || '登记失败，请稍后重试', true);
   } finally {
     button.disabled = false;
-    button.textContent = '匹配学生与选号号码';
+    button.textContent = '匹配学生订单';
   }
 });
 
 document.getElementById('cancelOfflineMatch').addEventListener('click', () => {
   pendingMatchToken = '';
   pendingReference = '';
+  pendingCampusNumber = '';
   matchPanel.hidden = true;
   manualForm.elements.featureCode.focus();
 });
@@ -75,26 +78,27 @@ document.getElementById('confirmOfflineActivation').addEventListener('click', as
   const button = event.currentTarget;
   if (!pendingMatchToken) return showToast('匹配确认已失效，请重新匹配', true);
   button.disabled = true;
-  button.textContent = '正在激活...';
+  button.textContent = '正在提交...';
   try {
     const response = await fetch('/api/offline/verifications', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ matchToken: pendingMatchToken, reference: pendingReference })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ matchToken: pendingMatchToken, campusNumber: pendingCampusNumber, reference: pendingReference })
     });
     const result = await response.json();
     if (response.status === 401) return location.replace('/offline/login');
-    if (!response.ok) throw new Error(result.error || '激活失败');
+    if (!response.ok) throw new Error(result.error || '核验失败');
     matchPanel.hidden = true;
     resultPanel.hidden = false;
-    resultPanel.innerHTML = `<strong>号码 ${escapeHtml(result.record.selectedNumber)} 已激活</strong><span>服务编号 ${escapeHtml(result.record.id)}</span>`;
+    resultPanel.innerHTML = `<strong>实名核验已提交</strong><span>服务编号 ${escapeHtml(result.record.id)}，请由商家确认激活。</span>`;
     pendingMatchToken = '';
     pendingReference = '';
+    pendingCampusNumber = '';
     manualForm.reset();
-    showToast('学生已实名，选号号码已激活');
+    showToast('学生实名核验已提交');
   } catch (error) {
-    showToast(error.message || '激活失败，请稍后重试', true);
+    showToast(error.message || '核验失败，请稍后重试', true);
   } finally {
     button.disabled = false;
-    button.textContent = '确认实名并激活';
+    button.textContent = '提交实名核验';
   }
 });
 
@@ -115,14 +119,16 @@ form.addEventListener('submit', async (event) => {
     if (response.status === 401) return location.replace('/offline/login');
     if (!response.ok) throw new Error(result.error || '导入失败');
     resultPanel.hidden = false;
-    resultPanel.innerHTML = `<strong>本次已激活 ${result.activated} 个号码</strong><span>${result.rejected ? `${result.rejected} 条未匹配，未做任何状态修改。` : '全部记录匹配成功。'}</span>`;
+    const verified = Number(result.verified || result.activated || 0);
+    const pendingMerchant = Number(result.pendingMerchant || 0);
+    resultPanel.innerHTML = `<strong>本次已提交 ${verified} 条实名核验</strong><span>${pendingMerchant ? `${pendingMerchant} 条校园账号预约等待商家确认激活；` : ''}${result.rejected ? `${result.rejected} 条未匹配，未做任何状态修改。` : '全部记录匹配成功。'}</span>`;
     form.reset();
     showToast('实名验证消息已处理');
   } catch (error) {
     showToast(error.message || '导入失败，请稍后重试', true);
   } finally {
     button.disabled = false;
-    button.textContent = '导入并匹配激活';
+    button.textContent = '导入并提交实名核验';
   }
 });
 

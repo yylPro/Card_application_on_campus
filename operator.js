@@ -144,7 +144,7 @@ function renderOverview(data) {
   const offlineAddress = data.offlineSettings?.verificationAddress || '';
   document.getElementById('offlineSettingsForm').elements.verificationAddress.value = offlineAddress;
   document.getElementById('offlineSettingsMeta').textContent = offlineAddress
-    ? `新提交的选号订单将自动获得此地址和唯一特征码；已发出的地址与特征码保持不变${data.offlineSettings.updatedAt ? ` · 更新于 ${formatTime(data.offlineSettings.updatedAt)}` : ''}`
+    ? `新提交的校园账号预约将自动获得此地址和唯一特征码；已发出的地址与特征码保持不变${data.offlineSettings.updatedAt ? ` · 更新于 ${formatTime(data.offlineSettings.updatedAt)}` : ''}`
     : '尚未设置线下实名认证地址';
   document.getElementById('metricScans').textContent = data.metrics.scans;
   document.getElementById('metricOrders').textContent = data.metrics.orders;
@@ -237,15 +237,18 @@ document.getElementById('logoutButton').addEventListener('click', async () => {
 });
 document.getElementById('exportButton').addEventListener('click', () => { location.assign('/api/admin/export.xlsx'); });
 document.getElementById('exportPendingButton')?.addEventListener('click', () => { location.assign('/api/admin/export-pending.xlsx'); });
-document.getElementById('exportNumberPendingButton')?.addEventListener('click', () => { location.assign('/api/admin/export-number-pending.xlsx'); });
-document.getElementById('exportActivatedButton')?.addEventListener('click', () => {
+document.getElementById('exportSelectedButton')?.addEventListener('click', () => {
+  const kinds = [];
+  if (document.getElementById('exportActivatedChecked')?.checked) kinds.push('activated');
+  if (document.getElementById('exportPendingChecked')?.checked) kinds.push('pending');
+  if (!kinds.length) return showToast('请至少选择一种激活状态', true);
   const from = document.getElementById('activatedFromDate')?.value || '';
   const to = document.getElementById('activatedToDate')?.value || '';
   if (from && to && from > to) return showToast('激活开始日期不能晚于结束日期', true);
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ kinds: kinds.join(',') });
   if (from) params.set('from', from);
   if (to) params.set('to', to);
-  location.assign(`/api/admin/export-activated.xlsx${params.toString() ? `?${params}` : ''}`);
+  location.assign(`/api/admin/export-selected.xlsx?${params}`);
 });
 document.getElementById('offlineSettingsForm').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -266,7 +269,7 @@ document.getElementById('offlineSettingsForm').addEventListener('submit', async 
   }
 });
 document.getElementById('clearOfflineAddressButton')?.addEventListener('click', async (event) => {
-  if (!window.confirm('清空后，新提交的选号订单将不再自动分配线下地址；已经发出的地址和特征码不会撤销。确定继续吗？')) return;
+  if (!window.confirm('清空后，新提交的校园账号预约将不再自动分配线下地址；已经发出的地址和特征码不会撤销。确定继续吗？')) return;
   event.currentTarget.disabled = true;
   try {
     const result = await api('/api/admin/offline-settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'clear' }) });

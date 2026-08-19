@@ -17,35 +17,36 @@
           <a href="#schoolQr">学校二维码</a>
           <a href="#records">订单与工单</a>
         </nav>
-          <div class="admin-side-note"><strong>数据权限提示</strong><p>设置线下地址后，学生选号提交会自动获得地址和唯一特征码。运营商仍可查看和人工补充处理；实名激活仅由线下实体端确认。</p></div>
+          <div class="admin-side-note"><strong>数据权限提示</strong><p>设置线下地址后，校园账号预约会自动获得地址和唯一特征码。运营商仍可查看和人工补充处理；实名核验由线下实体端完成，最终激活由商家确认。</p></div>
       </aside>
       <main class="admin-main">
         <header class="admin-header" id="overview">
-          <div><p class="eyebrow">运营商端</p><h1>校园通信服务管理</h1><p>导入号码并设置默认线下实名地址。学生提交选号后自动收到地址和特征码；人工处理仅用于补充或异常情况。</p></div>
+          <div><p class="eyebrow">运营商端</p><h1>校园通信服务管理</h1><p>查看校园账号预约、设置默认线下实名地址并导出订单。学生提交预约后自动收到地址和特征码；人工处理仅用于补充或异常情况。</p></div>
           <div class="admin-header-actions"><button class="outline-button" id="refreshButton">刷新数据</button><button class="outline-button" id="exportButton">导出全部</button><button class="outline-button" id="exportPendingButton">导出待处理</button><button class="text-button" id="logoutButton">退出</button></div>
           <div class="admin-header-actions"><button class="outline-button" id="serviceToggleButton">关闭三端服务</button><small id="serviceStatusMeta">三端服务运行中</small></div>
         </header>
 
         <section class="metric-grid admin-metrics">
           <article><span>学校入口访问</span><strong id="metricScans">0</strong><small>累计扫码/访问次数</small></article>
-          <article><span>待处理预约</span><strong id="metricOrders">0</strong><small>选号、校园网、宽带开通</small></article>
+          <article><span>待处理预约</span><strong id="metricOrders">0</strong><small>校园账号预约及历史服务</small></article>
           <article><span>待处理工单</span><strong id="metricTickets">0</strong><small>维修与业务咨询</small></article>
           <article><span>启用学校</span><strong id="metricSchools">0</strong><small>当前可用二维码入口</small></article>
           <article><span>可选号码</span><strong id="metricNumbers">0</strong><small>未被预占的号码资源</small></article>
         </section>
 
         <section class="admin-section" id="numberExports">
-          <div class="section-title"><div><p class="eyebrow">选号工单导出</p><h2>按激活状态导出 Excel</h2></div><p>未激活导出当前未取消的选号工单；已激活可按激活日期筛选。</p></div>
+          <div class="section-title"><div><p class="eyebrow">订单导出</p><h2>按激活状态导出 Excel</h2></div><p>与小程序运营商端一致，可同时导出已激活和未激活的校园账号预约订单。</p></div>
           <div class="export-toolbar">
-            <button class="outline-button" type="button" id="exportNumberPendingButton">导出未激活选号</button>
+            <label><input type="checkbox" id="exportActivatedChecked" checked /> 已激活</label>
+            <label><input type="checkbox" id="exportPendingChecked" /> 未激活</label>
             <label>激活开始<input type="date" id="activatedFromDate" /></label>
             <label>激活结束<input type="date" id="activatedToDate" /></label>
-            <button class="primary-button" type="button" id="exportActivatedButton">导出已激活选号</button>
+            <button class="primary-button" type="button" id="exportSelectedButton">导出表格</button>
           </div>
         </section>
 
         <section class="admin-section" id="offlineSettings">
-          <div class="section-title"><div><p class="eyebrow">全局办理设置</p><h2>线下实名认证地址</h2></div><p>保存后，新提交的选号订单会自动得到此地址和唯一特征码。系统只会补发给尚未分配的旧订单，已经发出的地址和特征码不会被改写。</p></div>
+          <div class="section-title"><div><p class="eyebrow">全局办理设置</p><h2>线下实名认证地址</h2></div><p>保存后，新提交的校园账号预约会自动得到此地址和唯一特征码。系统只会补发给尚未分配的旧订单，已经发出的地址和特征码不会被改写。</p></div>
           <form class="offline-settings-form" id="offlineSettingsForm">
             <label>可办理线下实名认证的地址<input name="verificationAddress" maxlength="160" placeholder="例如：东校区大学生活动中心一楼运营商服务点" /></label>
             <div class="form-actions"><button class="primary-button" type="submit">保存为新订单默认地址</button><button class="outline-button" type="button" id="clearOfflineAddressButton">停止自动分配</button></div>

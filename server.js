@@ -79,6 +79,7 @@ const BUILTIN_OFFLINE_PHONE_HASHES = IS_PRODUCTION ? [] : [
   '0f895527cf65770e626f1451314419cdf6709fbac93d4e436958b630fe4a9cdf'
 ];
 const OFFLINE_PHONE_HASHES = new Set([...BUILTIN_OFFLINE_PHONE_HASHES, ...APPROVED_STAFF_PHONE_HASHES, ...(process.env.OFFLINE_AUTHORIZED_PHONE_HASHES || '').split(',')].map((value) => value.trim()).filter(Boolean));
+const MERCHANT_PHONE_HASHES = new Set((process.env.MERCHANT_AUTHORIZED_PHONE_HASHES || '').split(',').map((value) => value.trim()).filter(Boolean));
 const WECHAT_OFFICIAL_APP_ID = process.env.WECHAT_OFFICIAL_APP_ID || '';
 const WECHAT_OFFICIAL_APP_SECRET = process.env.WECHAT_OFFICIAL_APP_SECRET || '';
 const WECHAT_MINIPROGRAM_APP_ID = process.env.WECHAT_MINIPROGRAM_APP_ID || '';
@@ -118,7 +119,7 @@ let wechatTicketCache = { value: '', expiresAt: 0 };
 const allowedStatuses = new Set(['pending', 'contacting', 'assigned', 'scheduled', 'processing', 'completed', 'cancelled']);
 const allowedVerificationStatuses = new Set(['pending_manual', 'verified', 'rejected', 'not_required']);
 const allowedDeliveryStatuses = new Set(['not_applicable', 'pending', 'shipped', 'delivered']);
-const allowedActivationStatuses = new Set(['not_applicable', 'pending', 'activated', 'failed']);
+const allowedActivationStatuses = new Set(['not_applicable', 'pending', 'pending_merchant', 'activated', 'failed']);
 const allowedSubsidyStatuses = new Set(['not_applicable', 'pending', 'approved', 'paid']);
 const statusTransitions = {
   pending: new Set(['pending', 'contacting', 'cancelled']),
@@ -197,6 +198,7 @@ function normalizeDb(db) {
   db.studentAccounts = Array.isArray(db.studentAccounts) ? db.studentAccounts : [];
   db.adminAccounts = Array.isArray(db.adminAccounts) ? db.adminAccounts : [];
   db.offlineAccounts = Array.isArray(db.offlineAccounts) ? db.offlineAccounts : [];
+  db.merchantAccounts = Array.isArray(db.merchantAccounts) ? db.merchantAccounts : [];
   db.numberOffers = Array.isArray(db.numberOffers) ? db.numberOffers : [];
   if (!IS_PRODUCTION) {
     const retiredTestOfferIds = new Set(['TEST-1380001', 'TEST-1380002', 'TEST-1380003']);
@@ -257,6 +259,12 @@ function normalizeDb(db) {
     if (!record.offlineVerifiedAt) record.offlineVerifiedAt = '';
     if (!record.offlineVerificationReference) record.offlineVerificationReference = '';
     if (!record.activationAt) record.activationAt = record.activationStatus === 'activated' ? (record.offlineVerifiedAt || record.updatedAt || '') : '';
+    if (!record.campusNumber) record.campusNumber = '';
+    if (!record.activationProofReference) record.activationProofReference = '';
+    if (!record.verifiedByPhone) record.verifiedByPhone = '';
+    if (!record.verifiedByName) record.verifiedByName = '';
+    if (!record.merchantPhone) record.merchantPhone = '';
+    if (!record.merchantName) record.merchantName = '';
   });
   db.vouchers = db.vouchers.filter((voucher) => voucher && voucher.id && voucher.recordId && voucher.token);
   db.vouchers.forEach((voucher) => {
@@ -549,6 +557,8 @@ function sessionCookie(token, maxAge, role) {
     ? 'campus_student_session'
     : role === 'offline'
       ? 'campus_offline_session'
+      : role === 'merchant'
+        ? 'campus_merchant_session'
       : 'campus_admin_session';
   return `${name}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${HTTPS_ENABLED || IS_PRODUCTION ? '; Secure' : ''}`;
 }
@@ -558,6 +568,8 @@ function sessionFor(req, role = 'admin') {
     ? 'campus_student_session'
     : role === 'offline'
       ? 'campus_offline_session'
+      : role === 'merchant'
+        ? 'campus_merchant_session'
       : 'campus_admin_session';
   const token = parseCookies(req)[cookieName];
   if (!token) return null;
@@ -591,6 +603,15 @@ function requireOffline(req, res) {
   const session = sessionFor(req, 'offline');
   if (!session) {
     json(res, 401, { error: '请先登录线下实体端' });
+    return null;
+  }
+  return session;
+}
+
+function requireMerchant(req, res) {
+  const session = sessionFor(req, 'merchant');
+  if (!session) {
+    json(res, 401, { error: '请先登录商家兑换端' });
     return null;
   }
   return session;
@@ -653,33 +674,42 @@ function decryptActivatedArchive(archive) {
   return JSON.parse(decrypted.toString('utf8'));
 }
 
-function matchOfflineRecord(db, code, idCard) {
-  const normalizedCode = safe(code, 40).toUpperCase();
-  const normalizedIdCard = safe(idCard, 18).toUpperCase();
-  const record = db.orders.find((item) => item.offlineFeatureCode === normalizedCode && item.selectedOfferId);
-  const offer = record ? db.numberOffers.find((item) => item.id === record.selectedOfferId && item.reservedBy === record.id) : null;
-  if (!normalizedCode || !validIdCard(normalizedIdCard) || !record || !offer || record.status === 'cancelled' || record.activationStatus === 'activated' || !sameIdCard(record.idCard, normalizedIdCard)) return null;
-  return { record, offer, normalizedCode, normalizedIdCard };
+function isOfflineVerificationOrder(record) {
+  return Boolean(record && (record.selectedOfferId || record.offlineFeatureCode || String(record.type || '') === '校园账号预约'));
 }
 
-function activateOfflineRecord(db, { code, idCard, reference, worker }) {
-  const match = matchOfflineRecord(db, code, idCard);
+function matchOfflineRecord(db, code, idCard, campusNumber = '') {
+  const normalizedCode = safe(code, 40).toUpperCase();
+  const normalizedIdCard = safe(idCard, 18).toUpperCase();
+  const normalizedCampusNumber = safe(campusNumber, 80);
+  const record = db.orders.find((item) => ((normalizedCode && item.offlineFeatureCode === normalizedCode) || (normalizedCampusNumber && (item.campusNumber === normalizedCampusNumber || item.selectedNumber === normalizedCampusNumber))) && isOfflineVerificationOrder(item));
+  const offer = record?.selectedOfferId ? db.numberOffers.find((item) => item.id === record.selectedOfferId && item.reservedBy === record.id) : null;
+  if ((!normalizedCode && !normalizedCampusNumber) || !validIdCard(normalizedIdCard) || !record || (record.selectedOfferId && !offer) || record.status === 'cancelled' || record.activationStatus === 'activated' || !sameIdCard(record.idCard, normalizedIdCard)) return null;
+  return { record, offer, normalizedCode: normalizedCode || record.offlineFeatureCode || '', normalizedIdCard };
+}
+
+function activateOfflineRecord(db, { code, idCard, campusNumber, reference, worker }) {
+  const match = matchOfflineRecord(db, code, idCard, campusNumber);
   if (!match) return null;
   const { record, offer, normalizedCode } = match;
   record.verificationStatus = 'verified';
-  record.activationStatus = 'activated';
+  const merchantActivation = isCampusAccountOrder(record);
+  record.activationStatus = merchantActivation ? 'pending_merchant' : 'activated';
   record.offlineVerifiedAt = new Date().toISOString();
-  record.activationAt = record.offlineVerifiedAt;
+  if (!merchantActivation) record.activationAt = record.offlineVerifiedAt;
   record.offlineVerificationReference = safe(reference, 200);
-  record.serviceResult = record.offlineVerificationReference ? `线下实体实名核验通过：${record.offlineVerificationReference}` : '线下实体实名核验通过，号码已激活';
+  record.serviceResult = record.offlineVerificationReference ? `线下实体实名核验通过：${record.offlineVerificationReference}` : merchantActivation ? '线下实体实名核验通过，等待商家确认激活' : '线下实体实名核验通过，号码已激活';
   record.updatedAt = record.offlineVerifiedAt;
-  offer.status = 'activated';
+  if (offer && !merchantActivation) offer.status = 'activated';
   if (record.status !== 'completed') {
     record.status = 'completed';
     record.statusHistory.push({ status: 'completed', at: record.updatedAt, by: `offline:${worker}` });
   }
+  record.campusNumber = safe(campusNumber, 80) || record.campusNumber || record.selectedNumber || '';
+  record.verifiedByPhone = worker;
+  record.verifiedByName = worker;
   db.offlineVerifications.push({ id: id('OFF'), recordId: record.id, featureCode: normalizedCode, workerPhoneHash: hashPhone(worker), reference: record.offlineVerificationReference, verifiedAt: record.offlineVerifiedAt });
-  archiveActivatedRecord(db, record);
+  if (!merchantActivation) archiveActivatedRecord(db, record);
   audit(db, 'offline.verification.registered', worker, record.id, { featureCode: normalizedCode, reference: record.offlineVerificationReference });
   return record;
 }
@@ -894,13 +924,17 @@ function isNumberOrderRecord(record) {
   return Boolean(record?.selectedOfferId) || String(record?.type || '').includes('选号');
 }
 
+function isCampusAccountOrder(record) {
+  return String(record?.type || '') === '校园账号预约';
+}
+
 function activationTimeForExport(record) {
   return record.activationAt || record.offlineVerifiedAt || (record.activationStatus === 'activated' ? record.updatedAt : '');
 }
 
 const NUMBER_ORDER_EXPORT_HEADERS = [
   '服务编号', '学校', '学院', '姓名', '学号', '身份证号', '联系电话', '备用联系电话', '备选联系电话',
-  '运营商', '选号号码', '线下实名地址', '学生特征码', '收货人', '收货联系电话', '收货地址', '交付方式',
+  '运营商', '选号号码', '校园号码', '线下实名地址', '学生特征码', '收货人', '收货联系电话', '收货地址', '交付方式',
   '交付状态', '订单状态', '实名激活状态', '激活状态', '激活时间', '创建时间', '更新时间', '处理结果'
 ];
 
@@ -917,6 +951,7 @@ function numberOrderExportRows(records) {
     备选联系电话: record.backupPhone,
     运营商: record.operator,
     选号号码: record.selectedNumber,
+    校园号码: record.campusNumber || record.selectedNumber,
     线下实名地址: record.offlineLocation,
     学生特征码: record.offlineFeatureCode,
     收货人: record.deliveryRecipient,
@@ -1068,6 +1103,85 @@ async function api(req, res, url) {
     return json(res, 200, { authenticated: Boolean(session), phone: session?.user || null, registrationEnabled: PUBLIC_REGISTRATION_ENABLED });
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/merchant/login') {
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const phone = safe(body.phone, 20);
+    const password = String(body.password || '');
+    if (!rateLimit(authAttempts, `merchant-login:${clientIp(req)}`, 8, 15 * 60 * 1000)) return json(res, 429, { error: '登录尝试次数过多，请 15 分钟后再试' });
+    const account = db.merchantAccounts.find((item) => item.phoneHash === hashPhone(phone) && item.status !== 'disabled');
+    if (!validPhone(phone) || !MERCHANT_PHONE_HASHES.has(hashPhone(phone)) || !account || !verifyPassword(password, account.passwordHash)) return json(res, 401, { error: '账号或密码错误' });
+    const token = createSession(phone, 'merchant');
+    audit(db, 'merchant.login', phone, 'merchant-portal', { ip: clientIp(req) });
+    await writeDb(db);
+    return json(res, 200, { phone, name: account.name || '' }, { 'Set-Cookie': sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000), 'merchant') });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/merchant/register') {
+    if (!PUBLIC_REGISTRATION_ENABLED) return json(res, 403, { error: '公网环境已关闭自助注册，请联系管理员预先创建账号' });
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const phone = safe(body.phone, 20);
+    const name = safe(body.name, 80);
+    const password = String(body.password || '');
+    if (!validPhone(phone) || !MERCHANT_PHONE_HASHES.has(hashPhone(phone))) return json(res, 403, { error: '该手机号未获商家兑换端授权' });
+    if (!name) return json(res, 400, { error: '请输入商家工作人员姓名' });
+    if (!validPassword(password)) return json(res, 400, { error: '密码须为 9-15 位，并同时包含大写字母、小写字母和数字' });
+    if (password !== String(body.confirmPassword || '')) return json(res, 400, { error: '两次输入的密码不一致' });
+    if (db.merchantAccounts.some((item) => item.phoneHash === hashPhone(phone))) return json(res, 409, { error: '该授权手机号已注册，请直接登录' });
+    db.merchantAccounts.push({ phoneHash: hashPhone(phone), passwordHash: hashPassword(password), name, status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const token = createSession(phone, 'merchant');
+    audit(db, 'merchant.register', phone, 'merchant-portal', { ip: clientIp(req) });
+    await writeDb(db);
+    return json(res, 201, { phone, name }, { 'Set-Cookie': sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000), 'merchant') });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/merchant/logout') {
+    const session = sessionFor(req, 'merchant');
+    if (session) sessions.delete(session.token);
+    return json(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie('', 0, 'merchant') });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/merchant/session') {
+    const session = sessionFor(req, 'merchant');
+    const account = session && db.merchantAccounts.find((item) => item.phoneHash === hashPhone(session.user));
+    return json(res, 200, { authenticated: Boolean(session), phone: session?.user || null, name: account?.name || '', registrationEnabled: PUBLIC_REGISTRATION_ENABLED });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/merchant/query') {
+    const session = requireMerchant(req, res);
+    if (!session) return;
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const campusNumber = safe(body.campusNumber, 80);
+    if (!campusNumber) return json(res, 400, { error: '请输入校园号码' });
+    const record = db.orders.find((item) => item.campusNumber === campusNumber || item.selectedNumber === campusNumber);
+    if (!record) return json(res, 200, { found: false, status: 'unverified', canConfirm: false, message: '未找到对应订单，暂未核验' });
+    const verified = record.verificationStatus === 'verified';
+    return json(res, 200, { status: verified ? 'verified' : 'pending', canConfirm: verified && record.activationStatus !== 'activated', message: verified ? '该订单已完成线下实名核验，可以确认激活。' : '该订单尚未完成线下实名核验。', record: { id: record.id, name: record.name, schoolName: record.schoolName, college: record.college, campusNumber: record.campusNumber || record.selectedNumber, activationStatus: record.activationStatus } });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/merchant/confirm-activation') {
+    const session = requireMerchant(req, res);
+    if (!session) return;
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const campusNumber = safe(body.campusNumber, 80);
+    const record = db.orders.find((item) => item.campusNumber === campusNumber || item.selectedNumber === campusNumber);
+    if (!record) return json(res, 404, { error: '未找到对应订单' });
+    if (record.verificationStatus !== 'verified') return json(res, 409, { error: '该订单尚未完成线下实名核验' });
+    if (record.activationStatus === 'activated') return json(res, 409, { error: '该订单已经激活' });
+    const account = db.merchantAccounts.find((item) => item.phoneHash === hashPhone(session.user));
+    record.activationStatus = 'activated';
+  record.activationAt = new Date().toISOString();
+    record.merchantPhone = session.user;
+    record.merchantName = account?.name || '';
+    record.updatedAt = record.activationAt;
+    audit(db, 'merchant.activation-confirmed', session.user, record.id, { campusNumber });
+    await writeDb(db);
+    return json(res, 200, { message: '号码已确认激活', record: { id: record.id, activationStatus: record.activationStatus } });
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/dev/test-fixtures') {
     if (IS_PRODUCTION) return json(res, 404, { error: '接口不存在' });
     const school = db.schools.find((item) => item.code === TEST_SCHOOL_CODE && item.status === 'active');
@@ -1210,10 +1324,10 @@ async function api(req, res, url) {
       const records = [...db.orders, ...db.tickets]
         .filter((record) => record.phone === phone && (studentSession || verifyPassword(body.password, record.passwordHash)))
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
+        .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
           const record = findRecord(db, id);
           const voucher = db.vouchers.find((item) => item.recordId === id);
-          return { id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
+          return { id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
         });
       return json(res, 200, { records: await Promise.all(records) });
     }
@@ -1225,10 +1339,10 @@ async function api(req, res, url) {
     const records = [...db.orders, ...db.tickets]
       .filter((record) => record.schoolCode === schoolCode && record.phone === phone)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
+      .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
         const record = findRecord(db, id);
         const voucher = db.vouchers.find((item) => item.recordId === id);
-        return { id, type, status, createdAt, appointment, operator, selectedNumber, deliveryStatus, activationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
+        return { id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
       });
     return json(res, 200, { records: await Promise.all(records) });
   }
@@ -1297,18 +1411,24 @@ async function api(req, res, url) {
     if (!record.college) return json(res, 400, { error: '请输入所属学院' });
     if (!validPhone(record.phone)) return json(res, 400, { error: '请输入正确的 11 位手机号码' });
     if (record.backupPhone && !validPhone(record.backupPhone)) return json(res, 400, { error: '备用联系电话应为正确的 11 位手机号码' });
+    if (!record.detail && isCampusAccountOrder(record)) record.detail = '校园账号预约';
     if (!record.detail) return json(res, 400, { error: '请填写需求说明' });
     if (!record.type) return json(res, 400, { error: '请选择服务项目' });
     if (!record.serviceConsent) return json(res, 400, { error: '请先同意信息收集和后续联系说明' });
     const isNumberOrder = url.pathname === '/api/orders' && record.type.includes('选号');
+    const isAccountOrder = url.pathname === '/api/orders' && isCampusAccountOrder(record);
     if (!isNumberOrder && record.selectedOfferId) return json(res, 400, { error: '非选号服务不能提交号码资源' });
     if (isNumberOrder && !record.address) return json(res, 400, { error: '请填写完整的收货地址' });
     if (isNumberOrder && !record.deliveryRecipient) return json(res, 400, { error: '请填写收货人' });
     if (isNumberOrder && !validPhone(record.deliveryPhone)) return json(res, 400, { error: '收货联系号码应为正确的 11 位手机号码' });
-    let idImages;
-    try {
-      idImages = { front: parseIdImage(body.idCardFrontImage), back: parseIdImage(body.idCardBackImage) };
-    } catch (error) { return json(res, 400, { error: error.message }); }
+    if (isAccountOrder) record.campusNumber = safe(body.campusNumber, 80);
+    let idImages = null;
+    const requiresIdImages = !isAccountOrder;
+    if (requiresIdImages) {
+      try {
+        idImages = { front: parseIdImage(body.idCardFrontImage), back: parseIdImage(body.idCardBackImage) };
+      } catch (error) { return json(res, 400, { error: error.message }); }
+    }
     if (isNumberOrder) {
       const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId && item.status === 'available');
       if (!offer) return json(res, 409, { error: '所选号码已被预占，请返回重新选择' });
@@ -1328,14 +1448,16 @@ async function api(req, res, url) {
       record.selectedOfferId = '';
       record.fulfillmentMethod = '';
     }
-    try {
-      record.idCardFrontFile = saveIdImage(idImages.front, record.id, 'front');
-      record.idCardBackFile = saveIdImage(idImages.back, record.id, 'back');
-    } catch (error) {
-      for (const filename of [record.idCardFrontFile, record.idCardBackFile].filter(Boolean)) {
-        try { fs.unlinkSync(path.join(UPLOAD_DIR, filename)); } catch { /* Nothing persisted for this order. */ }
+    if (idImages) {
+      try {
+        record.idCardFrontFile = saveIdImage(idImages.front, record.id, 'front');
+        record.idCardBackFile = saveIdImage(idImages.back, record.id, 'back');
+      } catch (error) {
+        for (const filename of [record.idCardFrontFile, record.idCardBackFile].filter(Boolean)) {
+          try { fs.unlinkSync(path.join(UPLOAD_DIR, filename)); } catch { /* Nothing persisted for this order. */ }
+        }
+        return json(res, 500, { error: '身份证图片加密存储失败，请稍后重试' });
       }
-      return json(res, 500, { error: '身份证图片加密存储失败，请稍后重试' });
     }
     if (record.selectedOfferId) {
       const offer = db.numberOffers.find((item) => item.id === record.selectedOfferId);
@@ -1344,7 +1466,15 @@ async function api(req, res, url) {
       offer.reservedBy = record.id;
     }
     record.statusHistory.push({ status: record.status, at: record.createdAt, by: 'student' });
-    record.verificationStatus = record.selectedOfferId ? 'pending_manual' : 'not_required';
+    record.verificationStatus = record.selectedOfferId || isAccountOrder ? 'pending_manual' : 'not_required';
+    if (isAccountOrder) {
+      record.activationStatus = 'pending';
+      record.offlineLocation = db.settings.offlineVerificationAddress || '';
+      if (record.offlineLocation) {
+        record.offlineFeatureCode = uniqueFeatureCode(db);
+        record.offlineAssignedAt = new Date().toISOString();
+      }
+    }
     const collection = url.pathname === '/api/orders' ? db.orders : db.tickets;
     collection.push(record);
     audit(db, 'student.submitted', 'student', record.id, { schoolCode, type: record.type });
@@ -1365,7 +1495,7 @@ async function api(req, res, url) {
     db.settings.offlineVerificationAddressUpdatedAt = updatedAt;
     let affectedOrders = 0;
     for (const record of db.orders) {
-      if (!record.selectedOfferId || record.status === 'cancelled' || record.activationStatus === 'activated') continue;
+      if (!isOfflineVerificationOrder(record) || record.status === 'cancelled' || record.activationStatus === 'activated') continue;
       // A location and feature code are a student-facing assignment. Once issued,
       // keep them stable so changing the default location cannot invalidate an order.
       if (action === 'set' && (!record.offlineLocation || !record.offlineFeatureCode)) {
@@ -1548,7 +1678,7 @@ async function api(req, res, url) {
     if (!session) return;
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
-    const match = matchOfflineRecord(db, body.featureCode, body.idCard);
+    const match = matchOfflineRecord(db, body.featureCode, body.idCard, body.campusNumber);
     if (!match) return json(res, 400, { error: '匹配失败。请核对特征码和学生身份证号码，或确认该号码尚未激活。' });
     const matchToken = crypto.randomBytes(32).toString('base64url');
     offlineMatches.set(matchToken, { worker: session.user, recordId: match.record.id, featureCode: match.normalizedCode, expiresAt: Date.now() + 5 * 60 * 1000 });
@@ -1563,6 +1693,7 @@ async function api(req, res, url) {
         schoolName: match.record.schoolName,
         operator: match.record.operator,
         selectedNumber: match.record.selectedNumber,
+        campusNumber: match.record.campusNumber || match.record.selectedNumber || '',
         offlineLocation: match.record.offlineLocation,
         verificationStatus: match.record.verificationStatus,
         activationStatus: match.record.activationStatus
@@ -1579,7 +1710,7 @@ async function api(req, res, url) {
     const pendingMatch = offlineMatches.get(matchToken);
     if (!pendingMatch || pendingMatch.worker !== session.user || pendingMatch.expiresAt <= Date.now()) return json(res, 400, { error: '匹配确认已失效，请重新核对学生信息' });
     const pendingRecord = db.orders.find((item) => item.id === pendingMatch.recordId);
-    const record = pendingRecord ? activateOfflineRecord(db, { code: pendingMatch.featureCode, idCard: pendingRecord.idCard, reference: body.reference, worker: session.user }) : null;
+    const record = pendingRecord ? activateOfflineRecord(db, { code: pendingMatch.featureCode, idCard: pendingRecord.idCard, campusNumber: body.campusNumber, reference: body.reference, worker: session.user }) : null;
     offlineMatches.delete(matchToken);
     if (!record) return json(res, 409, { error: '订单状态已变化，请重新匹配' });
     await writeDb(db);
@@ -1600,6 +1731,7 @@ async function api(req, res, url) {
     if (!rows.length) return json(res, 400, { error: 'Excel 中没有可导入的数据' });
     const aliases = (row, names) => names.map((name) => row[name]).find((value) => value !== undefined && String(value).trim() !== '') ?? '';
     const activated = [];
+    const pendingMerchant = [];
     const rejected = [];
     for (const row of rows) {
       const code = safe(aliases(row, ['特征码', 'featureCode', 'Feature Code']), 40).toUpperCase();
@@ -1610,11 +1742,12 @@ async function api(req, res, url) {
         rejected.push(code || 'empty');
         continue;
       }
-      activated.push(record.id);
+      if (record.activationStatus === 'pending_merchant') pendingMerchant.push(record.id);
+      else activated.push(record.id);
     }
-    if (!activated.length) return json(res, 400, { error: '没有匹配成功的实名记录。请检查特征码和身份证号码是否与学生订单一致。', rejected: rejected.length });
+    if (!activated.length && !pendingMerchant.length) return json(res, 400, { error: '没有匹配成功的实名记录。请检查特征码和身份证号码是否与学生订单一致。', rejected: rejected.length });
     await writeDb(db);
-    return json(res, 201, { activated: activated.length, rejected: rejected.length });
+    return json(res, 201, { activated: activated.length, pendingMerchant: pendingMerchant.length, verified: activated.length + pendingMerchant.length, rejected: rejected.length });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/student/confirm-completion') {
@@ -1733,7 +1866,7 @@ async function api(req, res, url) {
     if (!validExportDate(from) || !validExportDate(to)) return json(res, 400, { error: '日期格式必须为 YYYY-MM-DD' });
     if (from && to && from > to) return json(res, 400, { error: '开始日期不能晚于结束日期' });
     const activatedRecords = db.orders
-      .filter((record) => isNumberOrderRecord(record) && record.status !== 'cancelled' && record.activationStatus === 'activated')
+      .filter((record) => isOfflineVerificationOrder(record) && record.status !== 'cancelled' && record.activationStatus === 'activated')
       .filter((record) => {
         const date = String(activationTimeForExport(record) || '').slice(0, 10);
         return (!from || (date && date >= from)) && (!to || (date && date <= to));
@@ -1750,12 +1883,30 @@ async function api(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/admin/export-number-pending.xlsx') {
     if (!requireAdmin(req, res)) return;
     const pendingRecords = db.orders
-      .filter((record) => isNumberOrderRecord(record) && record.status !== 'cancelled' && record.activationStatus !== 'activated')
+      .filter((record) => isOfflineVerificationOrder(record) && record.status !== 'cancelled' && record.activationStatus !== 'activated')
       .sort((a, b) => `${a.schoolName || ''}\u0000${a.college || ''}\u0000${a.name || ''}`.localeCompare(`${b.schoolName || ''}\u0000${b.college || ''}\u0000${b.name || ''}`, 'zh-CN'));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(numberOrderExportRows(pendingRecords), { header: NUMBER_ORDER_EXPORT_HEADERS }), '未激活选号');
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="campus-number-orders-pending.xlsx"', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    return res.end(buffer);
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/admin/export-selected.xlsx') {
+    if (!requireAdmin(req, res)) return;
+    const kinds = new Set(String(url.searchParams.get('kinds') || '').split(',').filter((item) => item === 'activated' || item === 'pending'));
+    if (!kinds.size) return json(res, 400, { error: '请至少选择一种激活状态' });
+    const from = safe(url.searchParams.get('from'), 10);
+    const to = safe(url.searchParams.get('to'), 10);
+    if (!validExportDate(from) || !validExportDate(to) || (from && to && from > to)) return json(res, 400, { error: '日期筛选无效' });
+    const records = db.orders.filter((record) => isOfflineVerificationOrder(record) && record.status !== 'cancelled')
+      .filter((record) => (record.activationStatus === 'activated' ? kinds.has('activated') : kinds.has('pending')))
+      .filter((record) => record.activationStatus !== 'activated' || (!from || String(activationTimeForExport(record)).slice(0, 10) >= from) && (!to || String(activationTimeForExport(record)).slice(0, 10) <= to))
+      .sort((a, b) => `${a.schoolName || ''}\u0000${a.college || ''}\u0000${a.name || ''}`.localeCompare(`${b.schoolName || ''}\u0000${b.college || ''}\u0000${b.name || ''}`, 'zh-CN'));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(numberOrderExportRows(records), { header: NUMBER_ORDER_EXPORT_HEADERS }), '订单导出');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="campus-orders-selected.xlsx"', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     return res.end(buffer);
   }
 
@@ -1797,8 +1948,8 @@ async function api(req, res, url) {
     if (!allowedDeliveryStatuses.has(nextDelivery)) return json(res, 400, { error: '交付进度无效' });
     if (!allowedActivationStatuses.has(nextActivation)) return json(res, 400, { error: '实名激活状态无效' });
     if (!allowedSubsidyStatuses.has(nextSubsidy)) return json(res, 400, { error: '补贴状态无效' });
-    if (record.selectedOfferId && nextVerification !== record.verificationStatus) return json(res, 403, { error: '选号订单的实名核验状态只能由线下实体端更新' });
-    if (record.selectedOfferId && nextActivation !== record.activationStatus) return json(res, 403, { error: '选号订单的激活状态只能由线下实体端更新' });
+    if (isOfflineVerificationOrder(record) && nextVerification !== record.verificationStatus) return json(res, 403, { error: '需要线下核验的订单，其实名状态只能由线下实体端更新' });
+    if (isOfflineVerificationOrder(record) && nextActivation !== record.activationStatus) return json(res, 403, { error: '需要线下核验的订单，其激活状态只能由线下实体端更新' });
     if (nextStatus === 'assigned' && !nextAssignee) return json(res, 400, { error: '派单前请填写服务负责人' });
     if (nextStatus === 'scheduled' && !nextScheduledAt) return json(res, 400, { error: '预约服务前请填写预约时间' });
     if (nextDelivery === 'shipped' && (!nextCarrier || !nextTrackingNo)) return json(res, 400, { error: '交付快递前请填写承运商和运单号' });
@@ -1847,6 +1998,7 @@ const publicStaticFiles = new Set([
   'dispatch.html', 'dispatch.js', 'student-login.html', 'student-login.js',
   'admin-login.html', 'admin-login.js', 'admin-register.html', 'admin-register.js',
   'operator.html', 'operator.js', 'redeem.html', 'redeem.js',
+  'staff.html', 'merchant.html', 'merchant.js',
   'offline.html', 'offline.js', 'offline-login.html', 'offline-login.js',
   'offline-register.html', 'offline-register.js', 'service-unavailable.html'
 ]);
@@ -1879,6 +2031,8 @@ function staticFile(req, res, url) {
   if (pathname === '/admin' || pathname === '/admin/') pathname = '/operator.html';
   if (pathname === '/admin/login') pathname = '/admin-login.html';
   if (pathname === '/admin/register') pathname = '/admin-register.html';
+  if (pathname === '/staff' || pathname === '/staff/') pathname = '/staff.html';
+  if (pathname === '/merchant' || pathname === '/merchant/') pathname = '/merchant.html';
   if (pathname === '/student/login') pathname = '/student-login.html';
   if (pathname === '/student/register') pathname = '/student-login.html';
   const file = path.resolve(ROOT, `.${pathname}`);
