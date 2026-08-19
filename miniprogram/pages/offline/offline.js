@@ -57,6 +57,18 @@ Page({
     } });
   },
   clearActivationProof() { this.setData({ activationProofFile: '', activationProofPreview: '' }); },
+  showVerificationResult(results) {
+    const items = results || [];
+    const successCount = items.filter((item) => item.success).length;
+    const failureCount = items.length - successCount;
+    const title = successCount && failureCount ? '部分成功' : successCount ? '验证成功' : '验证失败';
+    const content = successCount && failureCount
+      ? `成功 ${successCount} 条，失败 ${failureCount} 条，请查看页面明细。`
+      : successCount
+        ? (successCount === 1 ? '实名核验已提交成功。' : `实名核验已提交成功，共 ${successCount} 条。`)
+        : '实名核验未通过，请查看页面明细后重试。';
+    wx.showModal({ title, content, showCancel: false, confirmText: '确认' });
+  },
   async verifyScanned() {
     const d = this.data;
     if (!d.scanFeatureCode && !d.campusNumber) return wx.showToast({ title: '请扫描特征码或输入校园号码', icon: 'none' });
@@ -64,14 +76,14 @@ Page({
     if (!d.activationProofFile) return wx.showToast({ title: '请先提交套卡实名已激活页面', icon: 'none' });
     try {
       const result = await request('/api/offline/import-verification', 'POST', { accountId: d.accountId, messages: [{ featureCode: d.scanFeatureCode, campusNumber: d.campusNumber, activationProofFile: d.activationProofFile, result: 'verified' }] });
-      this.setData({ results: (result.results || []).concat(this.data.results), scanFeatureCode: '', campusNumber: '', activationProofFile: '', activationProofPreview: '' });
-    } catch (error) { wx.showToast({ title: error.message, icon: 'none' }); }
+      this.setData({ results: (result.results || []).concat(this.data.results), scanFeatureCode: '', campusNumber: '', activationProofFile: '', activationProofPreview: '' }, () => this.showVerificationResult(result.results));
+    } catch (error) { wx.showModal({ title: '验证失败', content: error.message || '实名核验请求失败，请重试。', showCancel: false, confirmText: '确认' }); }
   },
   async importMessages() {
     if (!this.data.activationProofFile) return wx.showToast({ title: '请先提交套卡实名已激活页面', icon: 'none' });
     const messages = this.data.messageText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => { const [campusNumber, result] = line.split(/[,，\t]/).map((item) => item.trim()); return { campusNumber, activationProofFile: this.data.activationProofFile, result: result || 'verified' }; });
     if (!messages.length) return wx.showToast({ title: '请输入实名验证消息', icon: 'none' });
-    try { const result = await request('/api/offline/import-verification', 'POST', { accountId: this.data.accountId, messages }); this.setData({ results: (result.results || []).concat(this.data.results), messageText: '' }); } catch (error) { wx.showToast({ title: error.message, icon: 'none' }); }
+    try { const result = await request('/api/offline/import-verification', 'POST', { accountId: this.data.accountId, messages }); this.setData({ results: (result.results || []).concat(this.data.results), messageText: '' }, () => this.showVerificationResult(result.results)); } catch (error) { wx.showModal({ title: '验证失败', content: error.message || '批量实名核验请求失败，请重试。', showCancel: false, confirmText: '确认' }); }
   },
   async exportVerified() {
     try {

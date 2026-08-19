@@ -12,7 +12,7 @@ Page({
   data: {
     schoolName: '请先选择学校', schoolQuery: '', schools: [], colleges: [], college: '', searching: false, arrow: '›',
     heroTitle: '校园号码预约', heroCopy: '在线提交预约，线下实名核验后完成办理',
-    schoolLabel: '选择学校', collegeLabel: '选择二级学院', searchPlaceholder: '请输入学校关键词', collegePlaceholder: '请先选择学校', serviceLabel: '校园号码预约', recordsLabel: '查询本机订单', noSchools: '未找到匹配的学校', searchingLabel: '正在加载学校列表…',
+    schoolLabel: '选择学校', collegeLabel: '选择二级学院', searchPlaceholder: '请输入学校关键词', collegePlaceholder: '请先选择学校', serviceLabel: '校园账号预约', recordsLabel: '查询本机订单', noSchools: '未找到匹配的学校', searchingLabel: '正在加载学校列表…',
     name: '', studentNo: '', idCard: '', phone: '', address: '', serviceConsent: false, submitting: false,
     records: [], recordsMessage: '', recordsLoading: false
   },
@@ -82,7 +82,7 @@ Page({
     if (!d.serviceConsent) return wx.showToast({ title: '请先同意信息收集和后续联系说明', icon: 'none' });
     this.setData({ submitting: true });
     try {
-      const result = await request('/api/orders', 'POST', { schoolCode: app.globalData.schoolCode, type: '校园网账号预约', name: d.name, studentNo: d.studentNo, idCard: d.idCard, college: d.college, phone: d.phone, address: d.address, serviceConsent: d.serviceConsent });
+      const result = await request('/api/orders', 'POST', { schoolCode: app.globalData.schoolCode, type: '校园账号预约', name: d.name, studentNo: d.studentNo, idCard: d.idCard, college: d.college, phone: d.phone, address: d.address, serviceConsent: d.serviceConsent });
       wx.showModal({ title: '提交成功', content: `服务编号：${result.record.id}`, showCancel: false, success: () => { this.setData({ name: '', studentNo: '', idCard: '', phone: '', address: '', serviceConsent: false }); } });
     } catch (error) { wx.showToast({ title: error.message || '提交失败', icon: 'none' }); } finally { this.setData({ submitting: false }); }
   },
@@ -91,7 +91,7 @@ Page({
     this.setData({ recordsLoading: true, recordsMessage: '' });
     try {
       const result = await request('/api/student/records', 'POST', { schoolCode: '' });
-      const records = (result.records || []).map((item) => ({ ...item, statusText: item.verificationStatus === 'verified' ? '已完成' : (labels[item.status] || item.status), deliveryText: labels[item.deliveryStatus] || item.deliveryStatus, activationText: labels[item.activationStatus] || item.activationStatus, showFeatureQr: false }));
+      const records = (result.records || []).map((item) => ({ ...item, type: item.type === '校园网账号预约' ? '校园账号预约' : item.type, statusText: item.verificationStatus === 'verified' ? '已完成' : (labels[item.status] || item.status), deliveryText: labels[item.deliveryStatus] || item.deliveryStatus, activationText: labels[item.activationStatus] || item.activationStatus, showFeatureQr: false }));
       this.setData({ records, recordsMessage: records.length ? '' : '本机暂无订单记录。' });
     } catch (error) { wx.showToast({ title: error.message, icon: 'none' }); } finally { this.setData({ recordsLoading: false }); }
   },

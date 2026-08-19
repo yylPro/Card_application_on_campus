@@ -9,15 +9,15 @@ function checkboxChecked(detail) {
 
 Page({
   data: {
-    title: '校园网账号预约', kind: 'order',
+    title: '校园账号预约', kind: 'order',
     name: '', studentNo: '', idCard: '', college: '', phone: '', address: '',
     serviceConsent: false, submitting: false
   },
 
   onLoad(query) {
     const kind = query.kind === 'ticket' ? 'ticket' : 'order';
-    this.setData({ title: '校园网账号预约', kind, college: app.globalData.college || '' });
-    wx.setNavigationBarTitle({ title: '校园网账号预约' });
+    this.setData({ title: '校园账号预约', kind, college: app.globalData.college || '' });
+    wx.setNavigationBarTitle({ title: '校园账号预约' });
   },
 
   setField(event) { this.setData({ [event.currentTarget.dataset.key]: event.detail.value }); },
@@ -33,7 +33,7 @@ Page({
     this.setData({ submitting: true });
     try {
       const payload = {
-        schoolCode: app.globalData.schoolCode, type: '校园网账号预约', name: d.name, studentNo: d.studentNo,
+        schoolCode: app.globalData.schoolCode, type: '校园账号预约', name: d.name, studentNo: d.studentNo,
         idCard: d.idCard, college: d.college, phone: d.phone, address: d.address,
         serviceConsent: d.serviceConsent
       };

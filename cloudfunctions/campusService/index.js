@@ -64,14 +64,49 @@ const BUILTIN_BRANCH_PHONE_HASHES = new Set([
   '322c34aaa620caddd6b08ac38ba81dfe5b1118474aae1051ac19c6dd850bede3'
 ]);
 const BUILTIN_GRID_OPERATOR_PHONE_HASHES = new Set([
-  'e842f8731cb1f25ff74243c3e5f5952f99cede75e1978917bce90f74868ad1c3'
+  'e842f8731cb1f25ff74243c3e5f5952f99cede75e1978917bce90f74868ad1c3',
+  '857700790201de0c5d715e934b88b8fc2fcd120ffbddaf2a30798b0fa2c4c051',
+  '04c84a9c8b4de74510fae9744ba0530ceb56868a130021494ca94b3ba9fa2f36',
+  '2f804c4c7199cf151c8d879744ddbd7894e4cd904b4ee00620605c008fb8d704',
+  'ca6450f4fdd1e67450538daeff8bae04d165a4d149acc4a3531935102fa393f3',
+  'c5e977b5a5949e2b8ad6525ee78c7c25ba06897bbc00085553563b99810a86c4',
+  '6c0b56155b1223051ec5ad1223a0098865b7e62bcd4b5b936c05d0b398b2286e',
+  '0e200bc44d3b1bd5dd27e83be6c089829c7a3db580bcd74d60fbd91b910553e9',
+  '06e272914603b7210abe6f252412994483d1a558464a980207daa701ebc9cf70',
+  '0595513e820b2edad1e5d7d4b4f255464d497e44c1bf05f0a8c0127d3d424223'
 ]);
+const BUILTIN_GRID_OFFLINE_PHONE_HASHES = new Set([
+  '0f895527cf65770e626f1451314419cdf6709fbac93d4e436958b630fe4a9cdf',
+  'ee7ddcfdd9875a5a94b9ca9b9aa333d7385cc347cdf04f4d5b6038dfde98a966',
+  '12d0c7e0864f246192dbea348af47c5a5b99b53e5a41555afd6a7c232f72360c',
+  'b5732400836533fdcf85e1545ef1116bdec29c87567a99b23c83046ea26fe021',
+  'a32192b92352f4aa2eccb39bc21c47edea59b5e3cd42ff33a9ed1024befdfa48',
+  'a7787f35f89d4eaabf2915629e67cb8d6df0ccb804e9d585e8ffa9c7edbc6922',
+  '0d21eb3ae935650a5aaaf8e066879d71666f86a67bcf6f0a9419526b04debb5c',
+  'fcb3ba17786d94256b9227875b33de914dde2cd871615e644f7583e3b52915eb',
+  'c922202f09372f205fa80c5c9e206b6bc40346b8837ea3637f1327d95396273a'
+]);
+const GRID_TEST_ACCOUNT_SALT = 'campus-grid-test-v1';
+const GRID_TEST_PASSWORD_HASH = 'cc4f8726000bbb0a582573dd9625e9e184ad7c431c0b73925935fbd4a04456f2';
+const GRID_TEST_ACCOUNTS = [
+  ['18500010001', 'operator', '凤岭北'], ['18600010001', 'offline', '凤岭北'],
+  ['18500010002', 'operator', '仙葫'], ['18600010002', 'offline', '仙葫'],
+  ['18500010003', 'operator', '建政'], ['18600010003', 'offline', '建政'],
+  ['18500010004', 'operator', '新竹'], ['18600010004', 'offline', '新竹'],
+  ['18500010005', 'operator', '中山'], ['18600010005', 'offline', '中山'],
+  ['18500010006', 'operator', '津头'], ['18600010006', 'offline', '津头'],
+  ['18500010007', 'operator', '南湖'], ['18600010007', 'offline', '南湖'],
+  ['18500010008', 'operator', '凤岭南'], ['18600010008', 'offline', '凤岭南']
+].map(function (item) {
+  return { phone: item[0], role: item[1], gridName: item[2], name: item[2] + (item[1] === 'operator' ? '运营商' : '线下实体'), operatorScope: item[1] === 'operator' ? 'grid' : '', salt: GRID_TEST_ACCOUNT_SALT, passwordHash: GRID_TEST_PASSWORD_HASH, status: 'active' };
+});
 function authorizedStaffPhone(phone, role) {
   const envName = role === 'offline' ? 'CAMPUS_OUTLET_PHONE_HASHES' : role === 'merchant' ? 'CAMPUS_MERCHANT_PHONE_HASHES' : 'CAMPUS_OPERATOR_PHONE_HASHES';
   const raw = [process.env[envName] || '', role === 'operator' ? (process.env.CAMPUS_OPERATOR_BRANCH_PHONE_HASHES || '') : ''].filter(Boolean).join(',');
   const hash = crypto.createHash('sha256').update(phone).digest('hex');
   if (BUILTIN_GRID_OPERATOR_PHONE_HASHES.has(hash) && role !== 'operator') return false;
-  const builtinAuthorized = BUILTIN_BRANCH_PHONE_HASHES.has(hash) || (role === 'operator' && BUILTIN_GRID_OPERATOR_PHONE_HASHES.has(hash));
+  if (BUILTIN_GRID_OFFLINE_PHONE_HASHES.has(hash) && role !== 'offline') return false;
+  const builtinAuthorized = BUILTIN_BRANCH_PHONE_HASHES.has(hash) || (role === 'operator' && BUILTIN_GRID_OPERATOR_PHONE_HASHES.has(hash)) || (role === 'offline' && BUILTIN_GRID_OFFLINE_PHONE_HASHES.has(hash));
   if (!raw.trim()) return true;
   const configured = raw.split(',').map(function (item) { return item.trim().toLowerCase(); }).filter(Boolean);
   return builtinAuthorized || (BUILTIN_STAFF_PHONE_HASHES.has(hash) && role === 'operator') || configured.indexOf(hash) >= 0;
@@ -125,6 +160,12 @@ async function findCampusNumberRecord(value) {
 async function seed() {
   const names = ['campus_schools', 'campus_offers', 'campus_records', 'campus_accounts', 'campus_settings'];
   for (let i = 0; i < names.length; i += 1) { try { await db.createCollection(names[i]); } catch (e) {} }
+  for (let i = 0; i < GRID_TEST_ACCOUNTS.length; i += 1) {
+    const account = GRID_TEST_ACCOUNTS[i];
+    const foundAccount = await db.collection('campus_accounts').where({ phone: account.phone, role: account.role }).limit(1).get();
+    if (!foundAccount.data.length) await db.collection('campus_accounts').add({ data: account });
+    else await db.collection('campus_accounts').doc(foundAccount.data[0]._id).update({ data: { name: account.name, gridName: account.gridName, operatorScope: account.operatorScope, salt: account.salt, passwordHash: account.passwordHash, status: account.status } });
+  }
   for (let i = 0; i < schools.length; i += 1) {
     const school = schools[i];
     const found = await db.collection('campus_schools').where({ code: school.code }).limit(1).get();
@@ -176,19 +217,19 @@ function exportDateTime(value) {
   return fields.year + '-' + fields.month + '-' + fields.day + ' ' + fields.hour + ':' + fields.minute + ':' + fields.second;
 }
 function activationTimeForExport(record) { return record.activationAt || record.verifiedAt || (record.activationStatus === 'activated' ? record.updatedAt : ''); }
-const OPERATOR_EXPORT_HEADERS = ['服务编码', '学校', '学院', '学号', '姓名', '身份证号码', '特征码', '校园号码', '地址', '线下实名地址', '创建时间', '核验时间', '实名人员姓名', '实名人员电话', '商家姓名', '商家电话'];
-const OFFLINE_EXPORT_HEADERS = ['服务编码', '学校', '学院', '学号', '姓名', '身份证号码', '特征码', '地址'];
+const OPERATOR_EXPORT_HEADERS = ['服务编码', '所属网格', '学校', '学院', '学号', '姓名', '身份证号码', '特征码', '校园号码', '地址', '线下实名地址', '创建时间', '核验时间', '实名人员姓名', '实名人员电话', '商家姓名', '商家电话'];
+const OFFLINE_EXPORT_HEADERS = ['服务编码', '所属网格', '学校', '学院', '学号', '姓名', '身份证号码', '特征码', '地址', '实名人员姓名', '实名人员电话'];
 function operatorExportRows(records) {
   return records.map(function (record) {
     return {
-      服务编码: record.serviceCode || record._id || record.id || '', 学校: record.schoolName || '', 学院: record.college || '', 学号: record.studentNo || '', 姓名: record.name || '', 身份证号码: record.idCard || '', 特征码: record.featureCode || '', 校园号码: record.campusNumber || record.selectedNumber || record.selectedPhone || '', 地址: record.address || record.shippingAddress || '', 线下实名地址: record.outletAddress || '', 创建时间: exportDateTime(record.createdAt), 核验时间: exportDateTime(record.verifiedAt || activationTimeForExport(record)), 实名人员姓名: record.verifiedByName || '', 实名人员电话: record.verifiedByPhone || '', 商家姓名: record.merchantName || '', 商家电话: record.merchantPhone || ''
+      服务编码: record.serviceCode || record._id || record.id || '', 所属网格: record.gridName || '', 学校: record.schoolName || '', 学院: record.college || '', 学号: record.studentNo || '', 姓名: record.name || '', 身份证号码: record.idCard || '', 特征码: record.featureCode || '', 校园号码: record.campusNumber || record.selectedNumber || record.selectedPhone || '', 地址: record.address || record.shippingAddress || '', 线下实名地址: record.outletAddress || '', 创建时间: exportDateTime(record.createdAt), 核验时间: exportDateTime(record.verifiedAt || activationTimeForExport(record)), 实名人员姓名: record.verifiedByName || '', 实名人员电话: record.verifiedByPhone || '', 商家姓名: record.merchantName || '', 商家电话: record.merchantPhone || ''
     };
   });
 }
 function offlineExportRows(records) {
   return records.map(function (record) {
     return {
-      服务编码: record.serviceCode || record._id || record.id || '', 学校: record.schoolName || '', 学院: record.college || '', 学号: record.studentNo || '', 姓名: record.name || '', 身份证号码: record.idCard || '', 特征码: record.featureCode || '', 地址: record.address || record.shippingAddress || ''
+      服务编码: record.serviceCode || record._id || record.id || '', 所属网格: record.gridName || '', 学校: record.schoolName || '', 学院: record.college || '', 学号: record.studentNo || '', 姓名: record.name || '', 身份证号码: record.idCard || '', 特征码: record.featureCode || '', 地址: record.address || record.shippingAddress || '', 实名人员姓名: record.verifiedByName || '', 实名人员电话: record.verifiedByPhone || ''
     };
   });
 }
@@ -231,7 +272,7 @@ async function ensureOffers(schoolCode) {
 function requestData(event) { var data = {}; var raw = String(event.path || '/'); var q = raw.indexOf('?'); if (q >= 0) { var query = raw.slice(q + 1).split('&'); raw = raw.slice(0, q); for (var i = 0; i < query.length; i += 1) { var pair = query[i].split('='); if (pair[0]) data[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1] || ''); } } var extra = event.data || {}; for (var key in extra) data[key] = extra[key]; return { path: raw, data: data }; }
 exports.main = async function (event) {
   try {
-    if (!event || event.action === 'health') return { success: true, service: 'campusService', version: '20260818-7', cloudEnv: cloud.getWXContext().ENV };
+    if (!event || event.action === 'health') return { success: true, service: 'campusService', version: '20260819-5', cloudEnv: cloud.getWXContext().ENV };
     if (event.action !== 'proxy') return fail('不支持的操作');
     var parsed = requestData(event); var path = parsed.path; var data = parsed.data; var method = String(event.method || 'GET').toUpperCase();
     await ensureSeeded();
@@ -286,7 +327,7 @@ exports.main = async function (event) {
       record.gridName = normalizedGrid(record.gridName);
       if (!numberOrder) {
         record.schoolName = selectedSchool.name || '';
-        if (path === '/api/orders' && String(data.type || '') === '校园网账号预约') {
+        if (path === '/api/orders' && ['校园账号预约', '校园网账号预约'].indexOf(String(data.type || '')) >= 0) {
           record.featureCode = featureCode();
           record.verificationStatus = 'pending_manual';
           record.activationStatus = 'pending';
@@ -359,7 +400,7 @@ exports.main = async function (event) {
     if (method === 'POST' && path === '/api/operator/orders') {
       var orderOperator = await staffAccount(data, 'operator');
       if (!orderOperator) return fail('运营商账号未登录');
-      var allOperatorRecords = (await listAllRecords()).filter(function (item) { return item.selectedOfferId || item.type === '校园网账号预约'; });
+      var allOperatorRecords = (await listAllRecords()).filter(function (item) { return item.selectedOfferId || ['校园账号预约', '校园网账号预约'].indexOf(item.type) >= 0; });
       var operatorRecords = filterOperatorRecords(allOperatorRecords, orderOperator, data.gridName);
       var operatorOffers = (await db.collection('campus_offers').limit(1000).get()).data; var operatorSchools = (await db.collection('campus_schools').limit(1000).get()).data;
       var schoolMap = {}; operatorSchools.forEach(function (s) { schoolMap[s.code] = s.name; }); var offerMap = {}; operatorOffers.forEach(function (o) { offerMap[o.id] = o; });
@@ -398,11 +439,16 @@ exports.main = async function (event) {
       if (!await staffAccount(data, 'operator')) return fail('运营商账号未登录');
       return ok({ settings: await getOfflineSettings() });
     }
-    if (method === 'POST' && (path === '/api/operator/export-number-pending' || path === '/api/operator/export-activated')) {
+    if (method === 'POST' && (path === '/api/operator/export-number-pending' || path === '/api/operator/export-activated' || path === '/api/operator/export-selected')) {
       var exportOperator = await staffAccount(data, 'operator');
       if (!exportOperator) return fail('运营商账号未登录');
-      var exportRecords = filterOperatorRecords((await listAllRecords()).filter(isNumberOrderRecord).filter(function (item) { return item.status !== 'cancelled'; }), exportOperator, data.gridName);
-      if (path === '/api/operator/export-number-pending') exportRecords = exportRecords.filter(function (item) { return item.activationStatus !== 'activated'; });
+      var exportRecords = filterOperatorRecords((await listAllRecords()).filter(function (item) { return item && (item.selectedOfferId || ['校园账号预约', '校园网账号预约'].indexOf(item.type) >= 0); }).filter(function (item) { return item.status !== 'cancelled'; }), exportOperator, data.gridName);
+      var selectedKinds = Array.isArray(data.kinds) ? data.kinds.filter(function (item) { return item === 'activated' || item === 'pending'; }) : [];
+      var exportActivated = path === '/api/operator/export-activated' || (path === '/api/operator/export-selected' && selectedKinds.indexOf('activated') >= 0);
+      var exportPending = path === '/api/operator/export-number-pending' || (path === '/api/operator/export-selected' && selectedKinds.indexOf('pending') >= 0);
+      if (path === '/api/operator/export-selected' && !selectedKinds.length) return fail('请至少选择一种激活状态');
+      if (path === '/api/operator/export-selected') exportRecords = exportRecords.filter(function (item) { return (exportActivated && item.activationStatus === 'activated') || (exportPending && item.activationStatus !== 'activated'); });
+      else if (path === '/api/operator/export-number-pending') exportRecords = exportRecords.filter(function (item) { return item.activationStatus !== 'activated'; });
       else {
         var from = String(data.from || '').trim(); var to = String(data.to || '').trim();
         if (!validExportDate(from) || !validExportDate(to)) return fail('日期格式必须为 YYYY-MM-DD');
@@ -410,8 +456,14 @@ exports.main = async function (event) {
         exportRecords = exportRecords.filter(function (item) { var date = String(activationTimeForExport(item) || '').slice(0, 10); return item.activationStatus === 'activated' && (!from || (date && date >= from)) && (!to || (date && date <= to)); });
       }
       exportRecords.sort(function (left, right) { return String(left.schoolName || '').localeCompare(String(right.schoolName || ''), 'zh-CN') || String(left.college || '').localeCompare(String(right.college || ''), 'zh-CN') || String(left.name || '').localeCompare(String(right.name || ''), 'zh-CN'); });
-      var activatedExport = path.indexOf('activated') >= 0;
-       return ok(exportFile(exportRecords, activatedExport ? '已实名激活名单' : '未激活选号', activatedExport ? '校园号码订单-已激活' : '校园号码订单-待激活', OPERATOR_EXPORT_HEADERS, operatorExportRows(exportRecords)));
+      if (path === '/api/operator/export-selected' && exportActivated) {
+        var selectedFrom = String(data.from || '').trim(); var selectedTo = String(data.to || '').trim();
+        if (!validExportDate(selectedFrom) || !validExportDate(selectedTo)) return fail('日期格式必须为 YYYY-MM-DD');
+        if (selectedFrom && selectedTo && selectedFrom > selectedTo) return fail('开始日期不能晚于结束日期');
+        exportRecords = exportRecords.filter(function (item) { if (item.activationStatus !== 'activated') return true; var date = String(activationTimeForExport(item) || '').slice(0, 10); return (!selectedFrom || (date && date >= selectedFrom)) && (!selectedTo || (date && date <= selectedTo)); });
+      }
+      var combinedExport = path === '/api/operator/export-selected' && exportActivated && exportPending;
+       return ok(exportFile(exportRecords, combinedExport ? '已激活及未激活名单' : exportActivated ? '已实名激活名单' : '未激活选号', combinedExport ? '校园号码订单-已激活及未激活' : exportActivated ? '校园号码订单-已激活' : '校园号码订单-待激活', OPERATOR_EXPORT_HEADERS, operatorExportRows(exportRecords)));
     }
     if (method === 'POST' && path === '/api/offline/export-verified') {
       var verifiedAccount = await staffAccount(data, 'offline');
