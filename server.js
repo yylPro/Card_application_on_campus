@@ -1911,6 +1911,18 @@ async function api(req, res, url) {
     return res.end(buffer);
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/wechat/js-config') {
+    if (!WECHAT_OFFICIAL_APP_ID || !WECHAT_OFFICIAL_APP_SECRET) return json(res, 503, { error: '微信 JS-SDK 尚未配置公众号 AppID 和 AppSecret' });
+    let body;
+    try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const pageUrl = safe(body.pageUrl, 1000);
+    try {
+      const target = new URL(pageUrl);
+      if (target.origin !== url.origin || target.hash) return json(res, 400, { error: '网页地址无效' });
+      return json(res, 200, { config: await wechatJsConfig(target.toString()) });
+    } catch (error) { return json(res, 400, { error: error.message || '微信 JS-SDK 配置失败' }); }
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/admin/export-selected.xlsx') {
     if (!requireAdmin(req, res)) return;
     const kinds = new Set(String(url.searchParams.get('kinds') || '').split(',').filter((item) => item === 'activated' || item === 'pending'));

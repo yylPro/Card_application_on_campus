@@ -12,6 +12,36 @@ let scanStream = null;
 let scanTimer = null;
 let scanCanvas = null;
 let scanContext = null;
+let wechatSdkPromise = null;
+let wechatScanReady = false;
+
+function inWechat() { return /MicroMessenger/i.test(navigator.userAgent || ''); }
+function loadWechatSdk() {
+  if (wechatSdkPromise) return wechatSdkPromise;
+  wechatSdkPromise = new Promise((resolve, reject) => {
+    if (window.wx) return resolve(window.wx);
+    const script = document.createElement('script');
+    script.src = 'https://res.wx.qq.com/open/js/jweixin-1.6.0.js';
+    script.onload = () => resolve(window.wx);
+    script.onerror = () => reject(new Error('微信扫码组件加载失败'));
+    document.head.appendChild(script);
+  });
+  return wechatSdkPromise;
+}
+async function prepareWechatScan() {
+  if (!inWechat()) return null;
+  const wx = await loadWechatSdk();
+  if (wechatScanReady) return wx;
+  const response = await fetch('/api/wechat/js-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pageUrl: location.href.split('#')[0] }) });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || '微信扫码配置失败');
+  await new Promise((resolve, reject) => {
+    wx.config({ ...payload.config, jsApiList: ['scanQRCode'] });
+    wx.ready(() => { wechatScanReady = true; resolve(); });
+    wx.error((error) => reject(new Error(error?.errMsg || '微信 JS-SDK 配置失败')));
+  });
+  return wx;
+}
 
 function showToast(message, isError = false) {
   toast.textContent = message;
@@ -119,6 +149,17 @@ async function stopScanner() {
 
 document.getElementById('scanQrButton').addEventListener('click', async () => {
   try {
+    if (inWechat()) {
+      const wx = await prepareWechatScan();
+      wx.scanQRCode({ needResult: 1, scanType: ['qrCode'], success: (result) => {
+        const rawValue = String(result.resultStr || result.result || '').trim().toUpperCase();
+        const match = rawValue.match(/CAMPUS-[A-Z0-9_-]{4,40}/);
+        if (!match) return showToast('二维码中没有有效订单核验码', true);
+        manualForm.elements.featureCode.value = match[0];
+        showToast('二维码已识别，请继续填写校园号码');
+      }, fail: (error) => { if (!String(error?.errMsg || '').includes('cancel')) showToast('微信扫码失败，请重试', true); } });
+      return;
+    }
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('SECURE_CONTEXT');
     scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
     const video = document.getElementById('qrVideo');
