@@ -340,6 +340,7 @@ input:focus, textarea:focus, select:focus { border-color: #318ccc; box-shadow: 0
 .offline-match-detail dd { margin: 3px 0 0; color: var(--ink); font-weight: 700; }
 .offline-match-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .offline-scanner { position: fixed; inset: 0; z-index: 40; display: grid; align-content: center; justify-items: center; gap: 12px; padding: 24px; background: rgba(8, 22, 35, .92); color: #fff; }
+.offline-scanner[hidden] { display: none; }
 .offline-scanner-head { display: flex; align-items: center; justify-content: space-between; width: min(100%, 360px); }
 .offline-scanner h2 { margin: 0; font-size: 20px; }
 .offline-scanner .text-button { color: #fff; }
