@@ -18,22 +18,6 @@
     </header>
 
     <main class="student-main">
-      <section class="student-hero">
-        <div>
-          <p class="eyebrow" id="schoolEyebrow">校园专属服务</p>
-          <h1>办校园通信服务，<br />扫码就能安排</h1>
-          <p class="hero-description">选择学校和学院，提交校园账号预约；工作人员在线下核验后完成办理。</p>
-          <div class="service-hours"><span></span> 服务时间：08:30 - 20:30</div>
-        </div>
-        <div class="hero-visual" aria-hidden="true">
-          <div class="signal signal-one"></div>
-          <div class="signal signal-two"></div>
-          <div class="campus-building building-left"></div>
-          <div class="campus-building building-middle"></div>
-          <div class="campus-building building-right"></div>
-        </div>
-      </section>
-
       <section class="quick-actions" aria-label="常用操作">
         <button type="button" data-open="校园账号预约" data-kind="order">
           <span class="action-icon">号</span>
@@ -49,47 +33,6 @@
         </button>
       </section>
 
-      <section class="service-section">
-        <div class="section-title">
-          <div>
-            <p class="eyebrow">服务办理</p>
-          <h2>校园账号预约</h2>
-          </div>
-          <p>流程与微信小程序一致：选择学校、学院，填写学生信息并提交预约。</p>
-        </div>
-        <div class="service-grid">
-          <button class="service-card featured" type="button" data-open="校园账号预约" data-kind="order">
-            <span class="service-icon blue">网</span>
-            <span class="service-copy"><strong>校园账号预约</strong><small>提交学生资料，线下实名核验后完成办理</small></span>
-            <span class="chevron">›</span>
-          </button>
-          <button class="service-card" type="button" data-open="查询服务进度" data-kind="lookup">
-            <span class="service-icon teal">查</span>
-            <span class="service-copy"><strong>查询服务进度</strong><small>输入手机号和办理密码查询本人订单</small></span>
-            <span class="chevron">›</span>
-          </button>
-        </div>
-      </section>
-
-      <section class="flow-section">
-        <div class="section-title">
-          <div>
-            <p class="eyebrow">办理流程</p>
-          <h2>线上预约，线下核验</h2>
-          </div>
-        </div>
-        <ol class="service-flow">
-          <li><b>1</b><span><strong>扫码进入</strong><small>进入统一信息登记入口</small></span></li>
-          <li><b>2</b><span><strong>填写预约</strong><small>选择学校、学院并填写学生资料</small></span></li>
-          <li><b>3</b><span><strong>后台派单</strong><small>运营商安排服务人员</small></span></li>
-          <li><b>4</b><span><strong>线下实名</strong><small>凭特征码和校园号码完成核验</small></span></li>
-        </ol>
-      </section>
-
-      <section class="privacy-note">
-        <strong>信息使用说明</strong>
-        <p>提交的信息仅用于本次登记、运营商实名办理和线下核销。营销信息将另行征得您的明确同意。</p>
-      </section>
     </main>
 
     <div class="modal-backdrop" id="serviceModal" hidden>
@@ -97,7 +40,7 @@
         <button class="icon-close" type="button" data-close aria-label="关闭">×</button>
         <p class="eyebrow" id="modalSchool">校园通信服务</p>
         <h2 id="modalTitle">提交服务预约</h2>
-        <p class="modal-intro" id="modalIntro">工作人员将在服务时间内与您确认。</p>
+        <p class="modal-intro" id="modalIntro">提交后，工作人员会与您确认办理信息。</p>
         <form id="serviceForm">
           <div class="form-step" id="studentInfoStep">
           <div class="form-row">
@@ -110,41 +53,14 @@
             <label>学院<select name="college" id="collegeSelect" required><option value="其他">其他学院</option></select><input id="collegeCustom" name="collegeCustom" placeholder="请输入学院名称" hidden /></label>
           </div>
           <label>手机号码<input name="phone" inputmode="tel" autocomplete="tel" required placeholder="用于联系办理信息" /></label>
-          <label>备用联系电话（可选）<input name="backupPhone" inputmode="tel" placeholder="可填写家长或备用手机号" /></label>
-          <div class="form-row"><label>身份证人像面<input name="idCardFront" type="file" accept="image/jpeg,image/png" required /></label><label>身份证国徽面<input name="idCardBack" type="file" accept="image/jpeg,image/png" required /></label></div>
-          <button type="button" class="primary-button" id="nextServiceStepButton">下一步：选择服务</button>
-          </div>
-          <div class="form-step" id="serviceOptionsStep" hidden>
-          <div class="number-selection" id="numberSelection" hidden>
-            <label>意向号码<input type="hidden" name="selectedOfferId" id="selectedOfferId" required /><div class="number-summary"><strong id="selectedNumberSummary">尚未选择号码</strong><button type="button" class="outline-button" id="openNumberPickerButton">进入选号</button></div><small>提交后号码会立即预占；取消订单后号码才会回到号码池。</small></label>
-          </div>
-          <label id="deliveryAddressField" hidden>收货地址<input name="address" maxlength="160" autocomplete="street-address" placeholder="请填写省、市、区、街道及详细门牌号" /><small>仅用于号码卡配送，不作为线下实名认证地址。</small></label>
-          <div class="form-row" id="deliveryContactFields" hidden>
-            <label>收货人<input name="deliveryRecipient" maxlength="40" autocomplete="shipping name" placeholder="请输入收货人姓名" /></label>
-            <label>收货联系号码<input name="deliveryPhone" inputmode="tel" autocomplete="shipping tel" placeholder="请输入收货联系手机号" /></label>
-          </div>
-          <label id="appointmentField">希望服务时间<select name="appointment"><option value="尽快联系">尽快联系</option><option value="上午 09:00 - 12:00">上午 09:00 - 12:00</option><option value="下午 14:00 - 18:00">下午 14:00 - 18:00</option><option value="晚上 18:00 - 20:30">晚上 18:00 - 20:30</option></select></label>
-          <label>需求说明<textarea name="detail" required placeholder="请描述具体需求，例如希望办理的套餐或故障情况"></textarea></label>
-          <label class="consent"><input name="serviceConsent" type="checkbox" required /><span>我已阅读并同意将以上信息用于校园通信服务信息收集和后续联系。</span></label>
-          <label class="consent marketing"><input name="marketingConsent" type="checkbox" /><span>我同意接收校园通信服务优惠信息（可不选）。</span></label>
-          <div class="step-actions"><button type="button" class="outline-button" id="previousServiceStepButton">返回上一步</button><button class="primary-button submit-button" type="submit">提交预约</button></div>
+          <label>地址（选填）<textarea name="address" maxlength="160" autocomplete="street-address" placeholder="如需上门或联系地址，可填写详细地址"></textarea></label>
+          <label class="consent"><input name="serviceConsent" type="checkbox" required /><span>我同意将上述信息用于校园通信服务信息收集和后续联系。</span></label>
+          <button class="primary-button submit-button" type="submit">提交预约</button>
           </div>
         </form>
         <p class="fulfillment-note" id="fulfillmentNote" hidden>收货地址用于号码卡配送；运营商另行提供统一线下实名认证地址和特征码。学生到店核验身份证原件后完成号码激活。</p>
       </section>
     </div>
-    <div class="modal-backdrop" id="numberPickerModal" hidden>
-      <section class="modal number-picker-modal" role="dialog" aria-modal="true" aria-labelledby="numberPickerTitle">
-        <button class="icon-close" type="button" data-close aria-label="关闭">×</button>
-        <p class="eyebrow">号码选择</p><h2 id="numberPickerTitle">选择运营商和号码</h2>
-        <div class="operator-tabs" id="operatorTabs" role="tablist"></div>
-        <input class="number-search" id="numberSearch" type="search" placeholder="搜索号码后四位或套餐名称" />
-        <div class="number-picker-list" id="numberPickerList" aria-live="polite"><p class="empty-state">正在加载可选号码...</p></div>
-        <div class="number-pagination" id="numberPagination"></div>
-        <button type="button" class="primary-button" id="confirmNumberButton">确认选择</button>
-      </section>
-    </div>
-
     <div class="modal-backdrop" id="lookupModal" hidden>
       <section class="modal lookup-modal" role="dialog" aria-modal="true" aria-labelledby="lookupTitle">
         <button class="icon-close" type="button" data-close aria-label="关闭">×</button>

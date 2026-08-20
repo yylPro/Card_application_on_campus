@@ -23,7 +23,6 @@ function fillSchool(school) {
   selectedSchool = school; schoolCode = school.code; selectedSchoolCode.value = school.code; schoolSearch.value = school.name; schoolResults.replaceChildren();
   collegeSelect.innerHTML = (school.colleges || []).map((college) => `<option value="${escapeHtml(college)}">${escapeHtml(college)}</option>`).join('') || '<option value="">暂无学院信息</option>';
   document.getElementById('schoolBadge').textContent = `${school.name}服务入口`;
-  document.getElementById('schoolEyebrow').textContent = `${school.name}校园服务`;
   document.getElementById('modalSchool').textContent = `${school.name}校园通信服务`;
 }
 async function loadSchool() {
@@ -42,24 +41,24 @@ schoolSearch.addEventListener('input', () => {
 });
 schoolResults.addEventListener('click', (event) => { const button = event.target.closest('[data-school-code]'); if (button) fillSchool(schoolResults._schools.find((school) => school.code === button.dataset.schoolCode)); });
 function setStudentForm() {
-  document.getElementById('studentInfoStep').hidden = false; document.getElementById('serviceOptionsStep').hidden = true; document.getElementById('numberSelection').hidden = true; document.getElementById('deliveryAddressField').hidden = false; document.getElementById('deliveryContactFields').hidden = true; document.getElementById('appointmentField').hidden = true;
-  serviceForm.elements.detail.value = '校园账号预约'; serviceForm.elements.detail.disabled = false; serviceForm.elements.detail.closest('label').hidden = true;
-  ['idCardFront', 'idCardBack'].forEach((name) => { const field = serviceForm.elements[name]; if (field) { field.required = false; field.disabled = true; field.closest('label').hidden = true; } });
-  document.getElementById('modalTitle').textContent = '校园账号预约'; document.getElementById('modalIntro').textContent = '提交后，运营商会安排线下实名核验并提供特征码。'; document.querySelector('.submit-button').textContent = '提交预约'; openModal(serviceModal);
+  const currentSchool = selectedSchool;
+  serviceForm.reset();
+  if (currentSchool) fillSchool(currentSchool);
+  document.getElementById('modalTitle').textContent = '校园账号预约';
+  document.getElementById('modalIntro').textContent = '提交后，运营商会安排线下实名核验并提供特征码。';
+  document.querySelector('.submit-button').textContent = '提交预约';
+  openModal(serviceModal);
 }
 document.querySelectorAll('[data-open]').forEach((button) => button.addEventListener('click', () => button.dataset.kind === 'lookup' ? openModal(lookupModal) : setStudentForm()));
 document.getElementById('staffEntryButton').addEventListener('click', () => { location.assign('/staff'); });
 document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', closeModals));
 document.querySelectorAll('.modal-backdrop').forEach((modal) => modal.addEventListener('click', (event) => { if (event.target === modal) closeModals(); }));
-document.getElementById('nextServiceStepButton').addEventListener('click', () => { if (!selectedSchoolCode.value) return showToast('请先选择学校', true); document.getElementById('studentInfoStep').hidden = true; document.getElementById('serviceOptionsStep').hidden = false; });
-document.getElementById('previousServiceStepButton').addEventListener('click', () => { document.getElementById('studentInfoStep').hidden = false; document.getElementById('serviceOptionsStep').hidden = true; });
 serviceForm.addEventListener('submit', async (event) => {
   event.preventDefault(); if (!selectedSchoolCode.value) return showToast('请先选择学校', true);
   const data = Object.fromEntries(new FormData(serviceForm).entries());
   if (!data.name || !data.idCard || !data.college || !/^1\d{10}$/.test(data.phone)) return showToast('请完整填写姓名、身份证号、学院和联系电话', true);
   if (!/^[0-9]{17}[0-9Xx]$/.test(data.idCard)) return showToast('身份证号格式不正确', true);
-  data.schoolCode = selectedSchoolCode.value; data.type = '校园账号预约'; data.detail = '校园账号预约'; data.serviceConsent = true; data.marketingConsent = false;
-  delete data.idCardFront; delete data.idCardBack; delete data.password; delete data.selectedOfferId;
+  data.schoolCode = selectedSchoolCode.value; data.type = '校园账号预约'; data.detail = '校园账号预约'; data.marketingConsent = false;
   const button = serviceForm.querySelector('[type="submit"]'); button.disabled = true; button.textContent = '正在提交...';
   try { const result = await json(await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }), '提交失败，请稍后重试'); serviceForm.reset(); closeModals(); showToast(`提交成功，服务编号：${result.record.id}`); } catch (error) { showToast(error.message, true); } finally { button.disabled = false; button.textContent = '提交预约'; }
 });
