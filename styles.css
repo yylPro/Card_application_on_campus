@@ -339,6 +339,10 @@ input:focus, textarea:focus, select:focus { border-color: #318ccc; box-shadow: 0
 .offline-match-detail dt { color: var(--muted); font-size: 11px; }
 .offline-match-detail dd { margin: 3px 0 0; color: var(--ink); font-weight: 700; }
 .offline-match-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.offline-scanner { display: grid; grid-template-columns: minmax(0, 1fr) 280px auto; gap: 20px; align-items: center; margin-top: 20px; padding: 20px 0; border-top: 1px solid var(--line); }
+.offline-scanner h2 { margin: 0; font-size: 20px; }
+.offline-scanner p { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+.offline-scanner video { width: 280px; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: #111; }
 
 @media (max-width: 640px) {
   .offline-header { gap: 10px; padding: 0 14px; }
@@ -348,6 +352,8 @@ input:focus, textarea:focus, select:focus { border-color: #318ccc; box-shadow: 0
   .offline-manual, .offline-import { grid-template-columns: 1fr; gap: 20px; }
   .offline-result { display: grid; }
   .offline-match-detail dl { grid-template-columns: 1fr 1fr; }
+  .offline-scanner { grid-template-columns: 1fr; }
+  .offline-scanner video { width: min(100%, 320px); }
   .offline-instruction { grid-template-columns: 1fr; }
   .offline-instruction code { grid-column: 1; grid-row: auto; justify-self: start; }
 }

@@ -7,6 +7,9 @@ const matchDetail = document.getElementById('offlineMatchDetail');
 let pendingMatchToken = '';
 let pendingReference = '';
 let pendingCampusNumber = '';
+let pendingProofFile = '';
+let scanStream = null;
+let scanTimer = null;
 
 function showToast(message, isError = false) {
   toast.textContent = message;
@@ -54,6 +57,7 @@ manualForm.addEventListener('submit', async (event) => {
     pendingMatchToken = result.matchToken;
     pendingReference = data.reference || '';
     pendingCampusNumber = data.campusNumber || result.record.campusNumber || '';
+    pendingProofFile = await readFile(manualForm.elements.activationProofFile.files[0]);
     matchDetail.innerHTML = `<dl><div><dt>学生姓名</dt><dd>${escapeHtml(result.record.name)}</dd></div><div><dt>联系电话</dt><dd>${escapeHtml(result.record.phone)}</dd></div><div><dt>学校</dt><dd>${escapeHtml(result.record.schoolName)}</dd></div><div><dt>校园号码</dt><dd>${escapeHtml(pendingCampusNumber)}</dd></div></dl>`;
     matchPanel.hidden = false;
     matchPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -81,7 +85,7 @@ document.getElementById('confirmOfflineActivation').addEventListener('click', as
   button.textContent = '正在提交...';
   try {
     const response = await fetch('/api/offline/verifications', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ matchToken: pendingMatchToken, campusNumber: pendingCampusNumber, reference: pendingReference })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ matchToken: pendingMatchToken, campusNumber: pendingCampusNumber, reference: pendingReference, activationProofFile: pendingProofFile })
     });
     const result = await response.json();
     if (response.status === 401) return location.replace('/offline/login');
@@ -92,6 +96,7 @@ document.getElementById('confirmOfflineActivation').addEventListener('click', as
     pendingMatchToken = '';
     pendingReference = '';
     pendingCampusNumber = '';
+    pendingProofFile = '';
     manualForm.reset();
     showToast('学生实名核验已提交');
   } catch (error) {
@@ -101,6 +106,40 @@ document.getElementById('confirmOfflineActivation').addEventListener('click', as
     button.textContent = '提交实名核验';
   }
 });
+
+async function stopScanner() {
+  if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
+  if (scanStream) scanStream.getTracks().forEach((track) => track.stop());
+  scanStream = null;
+  document.getElementById('offlineScanner').hidden = true;
+}
+
+document.getElementById('scanQrButton').addEventListener('click', async () => {
+  if (!('BarcodeDetector' in window)) return showToast('当前浏览器不支持二维码扫描，请手工输入核验码', true);
+  try {
+    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+    const video = document.getElementById('qrVideo');
+    video.srcObject = scanStream;
+    await video.play();
+    document.getElementById('offlineScanner').hidden = false;
+    const scan = async () => {
+      if (!scanStream) return;
+      try {
+        const codes = await detector.detect(video);
+        if (codes[0]?.rawValue) {
+          manualForm.elements.featureCode.value = codes[0].rawValue.trim();
+          await stopScanner();
+          showToast('二维码已识别，请继续核对身份证和校园号码');
+          return;
+        }
+      } catch { /* Camera frames can be unavailable briefly. */ }
+      scanTimer = setTimeout(scan, 250);
+    };
+    scan();
+  } catch (error) { await stopScanner(); showToast(error.name === 'NotAllowedError' ? '请允许摄像头权限后再扫码' : '无法打开摄像头，请手工输入核验码', true); }
+});
+document.getElementById('stopScanButton').addEventListener('click', stopScanner);
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();

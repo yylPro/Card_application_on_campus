@@ -688,7 +688,7 @@ function matchOfflineRecord(db, code, idCard, campusNumber = '') {
   return { record, offer, normalizedCode: normalizedCode || record.offlineFeatureCode || '', normalizedIdCard };
 }
 
-function activateOfflineRecord(db, { code, idCard, campusNumber, reference, worker }) {
+function activateOfflineRecord(db, { code, idCard, campusNumber, reference, activationProofFile, worker }) {
   const match = matchOfflineRecord(db, code, idCard, campusNumber);
   if (!match) return null;
   const { record, offer, normalizedCode } = match;
@@ -698,6 +698,7 @@ function activateOfflineRecord(db, { code, idCard, campusNumber, reference, work
   record.offlineVerifiedAt = new Date().toISOString();
   if (!merchantActivation) record.activationAt = record.offlineVerifiedAt;
   record.offlineVerificationReference = safe(reference, 200);
+  record.activationProofFile = safe(activationProofFile, 2000000);
   record.serviceResult = record.offlineVerificationReference ? `线下实体实名核验通过：${record.offlineVerificationReference}` : merchantActivation ? '线下实体实名核验通过，等待商家确认激活' : '线下实体实名核验通过，号码已激活';
   record.updatedAt = record.offlineVerifiedAt;
   if (offer && !merchantActivation) offer.status = 'activated';
@@ -1728,7 +1729,7 @@ async function api(req, res, url) {
     const pendingMatch = offlineMatches.get(matchToken);
     if (!pendingMatch || pendingMatch.worker !== session.user || pendingMatch.expiresAt <= Date.now()) return json(res, 400, { error: '匹配确认已失效，请重新核对学生信息' });
     const pendingRecord = db.orders.find((item) => item.id === pendingMatch.recordId);
-    const record = pendingRecord ? activateOfflineRecord(db, { code: pendingMatch.featureCode, idCard: pendingRecord.idCard, campusNumber: body.campusNumber, reference: body.reference, worker: session.user }) : null;
+    const record = pendingRecord ? activateOfflineRecord(db, { code: pendingMatch.featureCode, idCard: pendingRecord.idCard, campusNumber: body.campusNumber, reference: body.reference, activationProofFile: body.activationProofFile, worker: session.user }) : null;
     offlineMatches.delete(matchToken);
     if (!record) return json(res, 409, { error: '订单状态已变化，请重新匹配' });
     await writeDb(db);
@@ -1755,7 +1756,7 @@ async function api(req, res, url) {
       const code = safe(aliases(row, ['特征码', 'featureCode', 'Feature Code']), 40).toUpperCase();
       const idCard = safe(aliases(row, ['身份证号码', '身份证号', 'idCard', 'ID Card']), 18).toUpperCase();
       const reference = safe(aliases(row, ['实名验证消息', '验证流水号', '验证编号', 'reference', 'message']), 200);
-      const record = activateOfflineRecord(db, { code, idCard, reference, worker: session.user });
+      const record = activateOfflineRecord(db, { code, idCard, reference, activationProofFile: aliases(row, ['套卡实名已激活页面', 'activationProofFile']), worker: session.user });
       if (!record) {
         rejected.push(code || 'empty');
         continue;
