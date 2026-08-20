@@ -78,7 +78,33 @@ async function requireSession() {
   if (!session.authenticated) return location.replace('/offline/login');
   const phone = String(session.phone || '');
   document.getElementById('offlineAccount').textContent = phone.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2');
+  await loadOfflineHistory();
 }
+
+async function loadOfflineHistory() {
+  const target = document.getElementById('offlineHistoryList');
+  if (!target) return;
+  try {
+    const response = await fetch('/api/offline/records');
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || '记录加载失败');
+    target.innerHTML = result.records?.length ? result.records.map((record) => `<article class="offline-history-item"><strong>${escapeHtml(record.schoolName || '')} · ${escapeHtml(record.name || '')}</strong><span>${escapeHtml(record.activationStatus === 'pending_merchant' ? '待商家激活' : '已激活')}</span><small>核验码：${escapeHtml(record.featureCode || '')}　校园号码：${escapeHtml(record.campusNumber || '')}</small><small>${escapeHtml(record.verifiedAt || '')}</small></article>`).join('') : '<p class="empty-state">暂无已核验订单。</p>';
+  } catch { target.innerHTML = '<p class="empty-state">核验记录暂时无法加载。</p>'; }
+}
+
+document.getElementById('exportVerifiedButton')?.addEventListener('click', async () => {
+  try {
+    const response = await fetch('/api/offline/export-verified', { method: 'POST' });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || '导出失败');
+    const blob = new Blob([Uint8Array.from(atob(result.base64), (char) => char.charCodeAt(0))], { type: result.mimeType || 'text/csv;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = result.fileName || 'offline-verified.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  } catch (error) { showToast(error.message || '导出失败', true); }
+});
 
 manualForm.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -99,6 +125,7 @@ manualForm.addEventListener('submit', async (event) => {
     resultPanel.hidden = false;
     resultPanel.innerHTML = `<strong>实名核验已提交</strong><span>${escapeHtml(item.message || '请等待商家确认激活')}</span>`;
     manualForm.reset();
+    await loadOfflineHistory();
     showToast('实名核验已提交');
   } catch (error) {
     showToast(error.message || '登记失败，请稍后重试', true);

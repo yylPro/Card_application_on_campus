@@ -34,6 +34,7 @@
         <div class="offline-match-actions"><button class="outline-button" id="cancelOfflineMatch" type="button">返回重填</button><button class="primary-button" id="confirmOfflineActivation" type="button">提交实名核验</button></div>
       </section>
       <section class="offline-result" id="offlineResult" hidden aria-live="polite"></section>
+      <section class="offline-history"><div><h2>我的核验记录</h2><p>仅显示当前登录线下账号完成的核验订单。</p></div><button class="primary-button" id="exportVerifiedButton" type="button">导出已核验名单</button><div id="offlineHistoryList" class="offline-history-list"><p class="empty-state">正在加载记录...</p></div></section>
     </main>
     <div class="toast" id="toast" role="status"></div>
     <script src="/vendor/jsqr.js"></script>

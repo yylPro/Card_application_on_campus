@@ -1109,6 +1109,23 @@ async function api(req, res, url) {
     return json(res, 200, { authenticated: Boolean(session), phone: session?.user || null, registrationEnabled: PUBLIC_REGISTRATION_ENABLED });
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/offline/records') {
+    const session = requireOffline(req, res);
+    if (!session) return;
+    const records = db.offlineVerifications.filter((item) => item.workerPhoneHash === hashPhone(session.user)).map((item) => {
+      const record = db.orders.find((order) => order.id === item.recordId);
+      return record ? { id: record.id, featureCode: item.featureCode, schoolName: record.schoolName, college: record.college, name: record.name, studentNo: record.studentNo, campusNumber: record.campusNumber || '', verifiedAt: item.verifiedAt, activationStatus: record.activationStatus } : null;
+    }).filter(Boolean).reverse();
+    return json(res, 200, { records });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/offline/export-verified') {
+    const session = requireOffline(req, res);
+    if (!session) return;
+    const records = db.offlineVerifications.filter((item) => item.workerPhoneHash === hashPhone(session.user)).map((item) => db.orders.find((order) => order.id === item.recordId)).filter(Boolean);
+    return json(res, 200, { fileName: `offline-verified-${Date.now()}.csv`, mimeType: 'text/csv;charset=utf-8', base64: Buffer.from(csv(records), 'utf8').toString('base64'), count: records.length });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/merchant/login') {
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
