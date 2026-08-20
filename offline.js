@@ -16,6 +16,7 @@ let wechatSdkPromise = null;
 let wechatScanReady = false;
 
 function inWechat() { return /MicroMessenger/i.test(navigator.userAgent || ''); }
+if (inWechat()) document.getElementById('offlineScanner').hidden = true;
 function loadWechatSdk() {
   if (wechatSdkPromise) return wechatSdkPromise;
   wechatSdkPromise = new Promise((resolve, reject) => {
