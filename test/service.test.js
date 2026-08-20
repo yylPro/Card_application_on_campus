@@ -679,7 +679,10 @@ test('校园账号预约可仅用手机号查询，与小程序流程一致', as
   assert.equal(created.response.status, 201);
   const records = await request('/api/student/records', { method: 'POST', body: { phone } });
   assert.equal(records.response.status, 200);
-  assert.ok(records.body.records.some((record) => record.id === created.body.record.id));
+  const record = records.body.records.find((item) => item.id === created.body.record.id);
+  assert.ok(record);
+  assert.match(record.offline.featureQrDataUrl, /^data:image\/png;base64,/);
+  assert.ok(!record.offline.featureQrDataUrl.includes(phone));
 });
 
 test('CRM、实名制与装维系统尚未接入，测试只验证内部状态字段', async () => {

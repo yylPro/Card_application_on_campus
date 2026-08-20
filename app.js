@@ -65,7 +65,21 @@ serviceForm.addEventListener('submit', async (event) => {
 function statusText(record) { return ({ pending: '待受理', contacting: '联系中', assigned: '已派单', scheduled: '已预约', processing: '处理中', completed: '已完成', cancelled: '已取消' })[record.status] || record.status; }
 function renderRecords(records) {
   const target = document.getElementById('lookupResults');
-  target.innerHTML = records.length ? records.map((record) => `<article class="record-item"><div><strong>${escapeHtml(record.type)}</strong><small>${escapeHtml(record.id)}</small></div><span class="status-chip">${escapeHtml(statusText(record))}</span>${record.offline ? `<div class="offline-instruction ${record.verificationStatus === 'verified' ? 'verified' : ''}"><strong>${record.verificationStatus === 'verified' ? '已完成实名核验' : '请前往线下实名核验'}</strong><span>${escapeHtml(record.offline.location || '等待运营商分配地址')}</span><code>${escapeHtml(record.offline.featureCode || '待分配')}</code></div>` : '<small>线下地址和特征码待运营商分配</small>'}<small>激活状态：${escapeHtml(record.activationStatus === 'activated' ? '已激活' : record.activationStatus === 'pending_merchant' ? '待商家激活' : '待处理')}</small></article>`).join('') : '<p class="empty-state">暂无办理记录。</p>';
+  target.innerHTML = records.length ? records.map((record, index) => `<article class="record-item"><div><strong>${escapeHtml(record.type)}</strong><small>${escapeHtml(record.id)}</small></div><span class="status-chip">${escapeHtml(statusText(record))}</span>${record.offline ? `<div class="offline-instruction ${record.verificationStatus === 'verified' ? 'verified' : ''}"><strong>${record.verificationStatus === 'verified' ? '已完成实名核验' : '请前往线下实名核验'}</strong><span>${escapeHtml(record.offline.location || '等待运营商分配地址')}</span>${record.offline.featureCode ? `<code>订单核验码：${escapeHtml(record.offline.featureCode)}</code>${record.offline.featureQrDataUrl ? `<button type="button" class="outline-button feature-qr-toggle" data-index="${index}">显示核验二维码</button><img class="feature-qr" data-qr-index="${index}" alt="订单核验二维码" hidden>` : ''}` : '<code>待分配</code>'}</div>` : '<small>线下地址和特征码待运营商分配</small>'}<small>激活状态：${escapeHtml(record.activationStatus === 'activated' ? '已激活' : record.activationStatus === 'pending_merchant' ? '待商家激活' : '待处理')}</small></article>`).join('') : '<p class="empty-state">暂无办理记录。</p>';
+  target.querySelectorAll('.feature-qr-toggle').forEach((button) => button.addEventListener('click', () => {
+    const index = Number(button.dataset.index);
+    const record = records[index];
+    const image = target.querySelector(`[data-qr-index="${index}"]`);
+    if (!record?.offline?.featureQrDataUrl || !image) return;
+    if (image.hidden) {
+      image.src = record.offline.featureQrDataUrl;
+      image.hidden = false;
+      button.textContent = '隐藏核验二维码';
+    } else {
+      image.hidden = true;
+      button.textContent = '显示核验二维码';
+    }
+  }));
 }
 lookupForm.addEventListener('submit', async (event) => { event.preventDefault(); const data = Object.fromEntries(new FormData(lookupForm).entries()); try { const result = await json(await fetch('/api/student/records', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: data.phone, password: data.password }) }), '查询失败，请稍后重试'); renderRecords(result.records || []); } catch (error) { showToast(error.message, true); } });
 // 学生端与小程序一致，打开服务入口即可预约，不强制跳转学生登录页。

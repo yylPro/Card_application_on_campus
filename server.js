@@ -924,6 +924,11 @@ function isNumberOrderRecord(record) {
   return Boolean(record?.selectedOfferId) || String(record?.type || '').includes('选号');
 }
 
+async function featureQrDataUrl(code) {
+  if (!code) return '';
+  return QRCode.toDataURL(String(code), { errorCorrectionLevel: 'M', margin: 1, width: 360 });
+}
+
 function isCampusAccountOrder(record) {
   return String(record?.type || '') === '校园账号预约';
 }
@@ -1326,7 +1331,7 @@ async function api(req, res, url) {
         .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
           const record = findRecord(db, id);
           const voucher = db.vouchers.find((item) => item.recordId === id);
-          return { id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
+          return { id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '', featureQrDataUrl: await featureQrDataUrl(offlineFeatureCode) } : null, voucher: await studentVoucher(voucher, record, url) };
         });
       return json(res, 200, { records: await Promise.all(records) });
     }
@@ -1339,7 +1344,7 @@ async function api(req, res, url) {
         .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
           const record = findRecord(db, id);
           const voucher = db.vouchers.find((item) => item.recordId === id);
-          return { id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
+          return { id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '', featureQrDataUrl: await featureQrDataUrl(offlineFeatureCode) } : null, voucher: await studentVoucher(voucher, record, url) };
         });
       return json(res, 200, { records: await Promise.all(records) });
     }
@@ -1354,7 +1359,7 @@ async function api(req, res, url) {
       .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
         const record = findRecord(db, id);
         const voucher = db.vouchers.find((item) => item.recordId === id);
-        return { id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
+        return { id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '', featureQrDataUrl: await featureQrDataUrl(offlineFeatureCode) } : null, voucher: await studentVoucher(voucher, record, url) };
       });
     return json(res, 200, { records: await Promise.all(records) });
   }

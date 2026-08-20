@@ -135,6 +135,8 @@ input:focus, textarea:focus, select:focus { border-color: #318ccc; box-shadow: 0
 .record-item strong, .record-item small { display: block; }
 .record-item small { margin-top: 3px; color: var(--muted); font-size: 12px; }
 .record-item .completion-open { margin-left: auto; font-size: 12px; }
+.feature-qr-toggle { flex-basis: auto; font-size: 12px; }
+.feature-qr { width: 180px; height: 180px; flex-basis: 180px; object-fit: contain; background: #fff; }
 .record-confirmed { color: var(--success) !important; }
 .empty-state { margin: 16px 0 0; padding: 18px; border-radius: 6px; background: #f6f9fb; color: var(--muted); text-align: center; }
 .toast { position: fixed; z-index: 30; bottom: 24px; left: 50%; max-width: calc(100% - 32px); padding: 10px 15px; border-radius: 6px; background: #173a56; color: #fff; box-shadow: 0 7px 20px rgba(0, 0, 0, .18); transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: .2s ease; }
