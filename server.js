@@ -80,6 +80,16 @@ const BUILTIN_OFFLINE_PHONE_HASHES = IS_PRODUCTION ? [] : [
 ];
 const OFFLINE_PHONE_HASHES = new Set([...BUILTIN_OFFLINE_PHONE_HASHES, ...APPROVED_STAFF_PHONE_HASHES, ...(process.env.OFFLINE_AUTHORIZED_PHONE_HASHES || '').split(',')].map((value) => value.trim()).filter(Boolean));
 const MERCHANT_PHONE_HASHES = new Set((process.env.MERCHANT_AUTHORIZED_PHONE_HASHES || '').split(',').map((value) => value.trim()).filter(Boolean));
+function parseScopedPhoneHashes(raw) {
+  return new Map(String(raw || '').split(',').map((item) => item.trim()).filter(Boolean).map((item) => {
+    const separator = item.indexOf(':');
+    return separator > 0 ? [item.slice(0, separator).trim(), item.slice(separator + 1).trim()] : [item, ''];
+  }).filter(([hash, grid]) => hash && grid));
+}
+const OPERATOR_GRID_PHONE_HASHES = parseScopedPhoneHashes(process.env.OPERATOR_GRID_PHONE_HASHES);
+const OFFLINE_GRID_PHONE_HASHES = parseScopedPhoneHashes(process.env.OFFLINE_GRID_PHONE_HASHES || process.env.OPERATOR_GRID_PHONE_HASHES);
+const OPERATOR_BRANCH_PHONE_HASHES = new Set((process.env.OPERATOR_BRANCH_PHONE_HASHES || '').split(',').map((value) => value.trim()).filter(Boolean));
+const OFFLINE_BRANCH_PHONE_HASHES = new Set((process.env.OFFLINE_BRANCH_PHONE_HASHES || process.env.OPERATOR_BRANCH_PHONE_HASHES || '').split(',').map((value) => value.trim()).filter(Boolean));
 const WECHAT_OFFICIAL_APP_ID = process.env.WECHAT_OFFICIAL_APP_ID || '';
 const WECHAT_OFFICIAL_APP_SECRET = process.env.WECHAT_OFFICIAL_APP_SECRET || '';
 const WECHAT_MINIPROGRAM_APP_ID = process.env.WECHAT_MINIPROGRAM_APP_ID || '';
@@ -608,6 +618,27 @@ function requireOffline(req, res) {
   return session;
 }
 
+function accountScope(db, phone, role) {
+  const phoneHash = hashPhone(phone);
+  const gridMap = role === 'offline' ? OFFLINE_GRID_PHONE_HASHES : OPERATOR_GRID_PHONE_HASHES;
+  const branchSet = role === 'offline' ? OFFLINE_BRANCH_PHONE_HASHES : OPERATOR_BRANCH_PHONE_HASHES;
+  const accountList = role === 'offline' ? db.offlineAccounts : db.adminAccounts;
+  const account = accountList.find((item) => item.phoneHash === phoneHash);
+  const gridName = gridMap.get(phoneHash) || account?.gridName || '';
+  const branch = branchSet.has(phoneHash) || (!gridName && !gridMap.has(phoneHash));
+  return { type: branch ? 'branch' : 'grid', gridName: branch ? '' : gridName };
+}
+
+function scopedRecords(records, scope, requestedGrid = '') {
+  const grid = scope.type === 'branch' ? String(requestedGrid || '') : scope.gridName;
+  return grid ? records.filter((record) => String(record.gridName || '') === grid) : records;
+}
+
+function scopeFromRequest(db, req, role) {
+  const session = sessionFor(req, role);
+  return session ? accountScope(db, session.user, role) : { type: 'branch', gridName: '' };
+}
+
 function requireMerchant(req, res) {
   const session = sessionFor(req, 'merchant');
   if (!session) {
@@ -939,41 +970,32 @@ function activationTimeForExport(record) {
 }
 
 const NUMBER_ORDER_EXPORT_HEADERS = [
-  '服务编号', '学校', '学院', '姓名', '学号', '身份证号', '联系电话', '备用联系电话', '备选联系电话',
-  '运营商', '选号号码', '校园号码', '线下实名地址', '学生特征码', '收货人', '收货联系电话', '收货地址', '交付方式',
-  '交付状态', '订单状态', '实名激活状态', '激活状态', '激活时间', '创建时间', '更新时间', '处理结果'
+  '服务编码', '所属网格', '学校', '学院', '学号', '姓名', '身份证号码', '特征码', '校园号码',
+  '地址', '线下实名地址', '创建时间', '核验时间', '实名人员姓名', '实名人员电话', '商家姓名', '商家联系电话'
 ];
 
 function numberOrderExportRows(records) {
   return records.map((record) => ({
-    服务编号: record.id,
+    服务编码: record.id,
+    所属网格: record.gridName || '',
     学校: record.schoolName,
     学院: record.college,
-    姓名: record.name,
     学号: record.studentNo,
-    身份证号: record.idCard,
-    联系电话: record.phone,
-    备用联系电话: record.backupPhone,
-    备选联系电话: record.backupPhone,
-    运营商: record.operator,
-    选号号码: record.selectedNumber,
+    姓名: record.name,
+    身份证号码: record.idCard,
+    特征码: record.offlineFeatureCode || record.featureCode || '',
     校园号码: record.campusNumber || record.selectedNumber,
+    地址: record.address,
     线下实名地址: record.offlineLocation,
-    学生特征码: record.offlineFeatureCode,
-    收货人: record.deliveryRecipient,
-    收货联系电话: record.deliveryPhone,
-    收货地址: record.address,
-    交付方式: record.fulfillmentMethod,
-    交付状态: record.deliveryStatus,
-    订单状态: record.status,
-    实名激活状态: record.activationStatus,
-    激活状态: record.activationStatus === 'activated' ? '已激活' : record.activationStatus,
-    激活时间: activationTimeForExport(record),
     创建时间: record.createdAt,
-    更新时间: record.updatedAt,
-    处理结果: record.serviceResult
+    核验时间: record.offlineVerifiedAt || '',
+    实名人员姓名: record.verifiedByName || '',
+    实名人员电话: record.verifiedByPhone || '',
+    商家姓名: record.merchantName || '',
+    商家联系电话: record.merchantPhone || ''
   }));
 }
+
 
 function validExportDate(value) {
   return !value || /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -1028,7 +1050,10 @@ async function api(req, res, url) {
     if (!validPassword(password)) return json(res, 400, { error: '密码须为 9-15 位，并同时包含大写字母、小写字母和数字' });
     if (password !== String(body.confirmPassword || '')) return json(res, 400, { error: '两次输入的密码不一致' });
     if (db.adminAccounts.some((item) => item.phoneHash === hashPhone(phone))) return json(res, 409, { error: '该授权手机号已注册，请直接登录' });
-    db.adminAccounts.push({ phoneHash: hashPhone(phone), passwordHash: hashPassword(password), status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const configuredScope = accountScope(db, phone, 'admin');
+    const gridName = configuredScope.type === 'grid' ? safe(body.gridName || configuredScope.gridName, 80) : '';
+    if (configuredScope.type === 'grid' && gridName !== configuredScope.gridName) return json(res, 400, { error: '所属网格不正确' });
+    db.adminAccounts.push({ phoneHash: hashPhone(phone), passwordHash: hashPassword(password), gridName, status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     const token = createSession(phone, 'admin');
     audit(db, 'auth.register', phone, 'operator', { ip: clientIp(req) });
     await writeDb(db);
@@ -1045,7 +1070,8 @@ async function api(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/auth/session') {
     const session = sessionFor(req, 'admin');
-    return json(res, 200, { authenticated: Boolean(session), user: session?.user || null, registrationEnabled: PUBLIC_REGISTRATION_ENABLED });
+    const scope = session ? accountScope(db, session.user, 'admin') : null;
+    return json(res, 200, { authenticated: Boolean(session), user: session?.user || null, registrationEnabled: PUBLIC_REGISTRATION_ENABLED, operatorScope: scope?.type || null, gridName: scope?.gridName || '' });
   }
 
   if (req.method === 'PATCH' && url.pathname === '/api/admin/service-status') {
@@ -1091,7 +1117,10 @@ async function api(req, res, url) {
     if (!validPassword(password)) return json(res, 400, { error: '密码须为 9-15 位，并同时包含大写字母、小写字母和数字' });
     if (password !== String(body.confirmPassword || '')) return json(res, 400, { error: '两次输入的密码不一致' });
     if (db.offlineAccounts.some((item) => item.phoneHash === hashPhone(phone))) return json(res, 409, { error: '该授权手机号已注册，请直接登录' });
-    db.offlineAccounts.push({ phoneHash: hashPhone(phone), passwordHash: hashPassword(password), status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const configuredScope = accountScope(db, phone, 'offline');
+    const gridName = configuredScope.type === 'grid' ? safe(body.gridName || configuredScope.gridName, 80) : '';
+    if (configuredScope.type === 'grid' && gridName !== configuredScope.gridName) return json(res, 400, { error: '所属网格不正确' });
+    db.offlineAccounts.push({ phoneHash: hashPhone(phone), passwordHash: hashPassword(password), gridName, status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     const token = createSession(phone, 'offline');
     audit(db, 'offline.register', phone, 'offline-portal', { ip: clientIp(req) });
     await writeDb(db);
@@ -1106,24 +1135,32 @@ async function api(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/offline/session') {
     const session = sessionFor(req, 'offline');
-    return json(res, 200, { authenticated: Boolean(session), phone: session?.user || null, registrationEnabled: PUBLIC_REGISTRATION_ENABLED });
+    const scope = session ? accountScope(db, session.user, 'offline') : null;
+    return json(res, 200, { authenticated: Boolean(session), phone: session?.user || null, registrationEnabled: PUBLIC_REGISTRATION_ENABLED, operatorScope: scope?.type || null, gridName: scope?.gridName || '' });
   }
 
   if (req.method === 'GET' && url.pathname === '/api/offline/records') {
     const session = requireOffline(req, res);
     if (!session) return;
-    const records = db.offlineVerifications.filter((item) => item.workerPhoneHash === hashPhone(session.user)).map((item) => {
+    const scope = accountScope(db, session.user, 'offline');
+    const verified = db.offlineVerifications.map((item) => {
       const record = db.orders.find((order) => order.id === item.recordId);
-      return record ? { id: record.id, featureCode: item.featureCode, schoolName: record.schoolName, college: record.college, name: record.name, studentNo: record.studentNo, campusNumber: record.campusNumber || '', verifiedAt: item.verifiedAt, activationStatus: record.activationStatus } : null;
-    }).filter(Boolean).reverse();
+      return record ? { record, item } : null;
+    }).filter(Boolean);
+    const records = scopedRecords(verified.map(({ record, item }) => ({ ...record, featureCode: item.featureCode, verifiedAt: item.verifiedAt })), scope)
+      .map((record) => ({ id: record.id, featureCode: record.featureCode, schoolName: record.schoolName, college: record.college, name: record.name, studentNo: record.studentNo, campusNumber: record.campusNumber || '', verifiedAt: record.verifiedAt, activationStatus: record.activationStatus })).reverse();
     return json(res, 200, { records });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/offline/export-verified') {
     const session = requireOffline(req, res);
     if (!session) return;
-    const records = db.offlineVerifications.filter((item) => item.workerPhoneHash === hashPhone(session.user)).map((item) => db.orders.find((order) => order.id === item.recordId)).filter(Boolean);
-    return json(res, 200, { fileName: `offline-verified-${Date.now()}.csv`, mimeType: 'text/csv;charset=utf-8', base64: Buffer.from(csv(records), 'utf8').toString('base64'), count: records.length });
+    const scope = accountScope(db, session.user, 'offline');
+    const records = scopedRecords(db.offlineVerifications.map((item) => db.orders.find((order) => order.id === item.recordId)).filter(Boolean), scope);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(numberOrderExportRows(records), { header: NUMBER_ORDER_EXPORT_HEADERS }), '已核验订单');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    return json(res, 200, { fileName: `offline-verified-${Date.now()}.xlsx`, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', base64: buffer.toString('base64'), count: records.length });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/merchant/login') {
@@ -1521,6 +1558,7 @@ async function api(req, res, url) {
   if (req.method === 'PATCH' && url.pathname === '/api/admin/offline-settings') {
     const session = requireAdmin(req, res);
     if (!session) return;
+    if (accountScope(db, session.user, 'admin').type !== 'branch') return json(res, 403, { error: '只有分公司账号可以修改统一线下实名地址' });
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
     const action = body.action === 'clear' ? 'clear' : 'set';
@@ -1548,9 +1586,17 @@ async function api(req, res, url) {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/admin/overview') {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
+    const scope = accountScope(db, session.user, 'admin');
+    const requestedGrid = scope.type === 'branch' ? safe(url.searchParams.get('gridName'), 80) : '';
+    const visibleOrders = scopedRecords(db.orders, scope, requestedGrid);
+    const visibleGridNames = [...new Set(db.orders.map((record) => record.gridName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
     const openRecords = (records) => records.filter((record) => !['completed', 'cancelled'].includes(record.status)).length;
     return json(res, 200, {
+      operatorScope: scope.type,
+      gridName: scope.gridName,
+      availableGrids: scope.type === 'branch' ? visibleGridNames : [scope.gridName],
       offlineSettings: {
         verificationAddress: db.settings.offlineVerificationAddress,
         updatedAt: db.settings.offlineVerificationAddressUpdatedAt
@@ -1561,12 +1607,12 @@ async function api(req, res, url) {
         updatedBy: db.settings.serviceStatusUpdatedBy
       },
       schools: db.schools.filter((item) => item.code !== TEST_SCHOOL_CODE),
-      orders: db.orders.slice(-300).reverse(),
-      tickets: db.tickets.slice(-300).reverse(),
+      orders: visibleOrders.slice(-300).reverse(),
+      tickets: [],
       metrics: {
         scans: db.schools.reduce((total, school) => total + (school.scans || 0), 0),
-        orders: openRecords(db.orders),
-        tickets: openRecords(db.tickets),
+        orders: openRecords(visibleOrders),
+        tickets: 0,
         activeSchools: db.schools.filter((item) => item.code !== TEST_SCHOOL_CODE && item.status === 'active').length,
         availableNumbers: db.numberOffers.filter((item) => item.status === 'available').length
       },
@@ -1918,17 +1964,19 @@ async function api(req, res, url) {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/admin/export-activated.xlsx') {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
+    const scope = accountScope(db, session.user, 'admin');
     const from = safe(url.searchParams.get('from'), 10);
     const to = safe(url.searchParams.get('to'), 10);
     if (!validExportDate(from) || !validExportDate(to)) return json(res, 400, { error: '日期格式必须为 YYYY-MM-DD' });
     if (from && to && from > to) return json(res, 400, { error: '开始日期不能晚于结束日期' });
-    const activatedRecords = db.orders
+    const activatedRecords = scopedRecords(db.orders
       .filter((record) => isOfflineVerificationOrder(record) && record.status !== 'cancelled' && record.activationStatus === 'activated')
       .filter((record) => {
         const date = String(activationTimeForExport(record) || '').slice(0, 10);
         return (!from || (date && date >= from)) && (!to || (date && date <= to));
-      })
+      }), scope)
       .sort((a, b) => `${a.schoolName || ''}\u0000${a.college || ''}\u0000${a.name || ''}`.localeCompare(`${b.schoolName || ''}\u0000${b.college || ''}\u0000${b.name || ''}`, 'zh-CN'));
     const rows = numberOrderExportRows(activatedRecords);
     const workbook = XLSX.utils.book_new();
@@ -1939,10 +1987,12 @@ async function api(req, res, url) {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/admin/export-number-pending.xlsx') {
-    if (!requireAdmin(req, res)) return;
-    const pendingRecords = db.orders
+    const session = requireAdmin(req, res);
+    if (!session) return;
+    const scope = accountScope(db, session.user, 'admin');
+    const pendingRecords = scopedRecords(db.orders
       .filter((record) => isOfflineVerificationOrder(record) && record.status !== 'cancelled' && record.activationStatus !== 'activated')
-      .sort((a, b) => `${a.schoolName || ''}\u0000${a.college || ''}\u0000${a.name || ''}`.localeCompare(`${b.schoolName || ''}\u0000${b.college || ''}\u0000${b.name || ''}`, 'zh-CN'));
+      .sort((a, b) => `${a.schoolName || ''}\u0000${a.college || ''}\u0000${a.name || ''}`.localeCompare(`${b.schoolName || ''}\u0000${b.college || ''}\u0000${b.name || ''}`, 'zh-CN')), scope);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(numberOrderExportRows(pendingRecords), { header: NUMBER_ORDER_EXPORT_HEADERS }), '未激活选号');
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
@@ -1963,13 +2013,16 @@ async function api(req, res, url) {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/admin/export-selected.xlsx') {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
+    const scope = accountScope(db, session.user, 'admin');
+    const requestedGrid = scope.type === 'branch' ? safe(url.searchParams.get('gridName'), 80) : '';
     const kinds = new Set(String(url.searchParams.get('kinds') || '').split(',').filter((item) => item === 'activated' || item === 'pending'));
     if (!kinds.size) return json(res, 400, { error: '请至少选择一种激活状态' });
     const from = safe(url.searchParams.get('from'), 10);
     const to = safe(url.searchParams.get('to'), 10);
     if (!validExportDate(from) || !validExportDate(to) || (from && to && from > to)) return json(res, 400, { error: '日期筛选无效' });
-    const records = db.orders.filter((record) => isOfflineVerificationOrder(record) && record.status !== 'cancelled')
+    const records = scopedRecords(db.orders.filter((record) => isOfflineVerificationOrder(record) && record.status !== 'cancelled'), scope, requestedGrid)
       .filter((record) => (record.activationStatus === 'activated' ? kinds.has('activated') : kinds.has('pending')))
       .filter((record) => record.activationStatus !== 'activated' || (!from || String(activationTimeForExport(record)).slice(0, 10) >= from) && (!to || String(activationTimeForExport(record)).slice(0, 10) <= to))
       .sort((a, b) => `${a.schoolName || ''}\u0000${a.college || ''}\u0000${a.name || ''}`.localeCompare(`${b.schoolName || ''}\u0000${b.college || ''}\u0000${b.name || ''}`, 'zh-CN'));

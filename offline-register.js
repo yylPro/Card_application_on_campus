@@ -1,7 +1,8 @@
 const form = document.getElementById('offlineRegisterForm');
 const toast = document.getElementById('toast');
+document.getElementById('gridNameField')?.removeAttribute('hidden');
 
-fetch('/api/offline/session').then((response) => response.json()).then((session) => { if (!session.registrationEnabled) location.replace('/offline/login'); }).catch(() => {});
+fetch('/api/offline/session').then((response) => response.json()).then((session) => { if (!session.registrationEnabled) location.replace('/offline/login'); if (session.operatorScope === 'grid') document.getElementById('gridNameField').hidden = false; }).catch(() => {});
 
 function showToast(message) {
   toast.textContent = message;

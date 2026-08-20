@@ -16,6 +16,7 @@ const verificationOptions = [
 ];
 let overview = null;
 let activeFilter = 'all';
+let activeGrid = '';
 
 function showToast(message, isError = false) {
   toast.textContent = message;
@@ -119,8 +120,8 @@ function renderRecords() {
       <span><strong>${escapeHtml(record.name)}</strong><small>${escapeHtml(record.schoolName)} · ${escapeHtml(record.phone)}</small></span>
       <span><strong>${escapeHtml(record.type)}</strong><small>${escapeHtml(record.detail)}</small></span>
       <span><strong>${escapeHtml(record.type.includes('选号') ? record.address : record.appointment)}</strong><small>${formatTime(record.createdAt)}</small></span>
-      <span><span class="status-chip ${escapeHtml(record.status)}">${labelFrom(statusOptions, record.status)}</span><small>${labelFrom(verificationOptions, record.verificationStatus)}</small></span>
-      <span>${record.verificationStatus === 'verified' ? '已完成实名核验' : '待线下核验'}</span>
+      <span><span class="status-chip ${escapeHtml(record.status)}">${labelFrom(statusOptions, record.status)}</span><small>实名核验：${record.verificationStatus === 'verified' ? '已完成' : record.verificationStatus === 'rejected' ? '未通过' : '待核验'}</small></span>
+      <span><strong>实名核验：${record.verificationStatus === 'verified' ? '已完成' : '待核验'}</strong><small>商家兑换：${record.activationStatus === 'activated' ? '已兑换' : record.activationStatus === 'pending_merchant' ? '待商家兑换' : record.activationStatus === 'not_applicable' ? '不适用' : '待兑换'}</small></span>
     </article>
   `).join('')}`;
 }
@@ -133,6 +134,14 @@ function renderNumberOffers(offers) {
 
 function renderOverview(data) {
   overview = data;
+  const gridWrap = document.getElementById('gridFilterWrap');
+  const gridFilter = document.getElementById('gridFilter');
+  if (gridWrap && gridFilter) {
+    const isBranch = data.operatorScope === 'branch';
+    gridWrap.hidden = !isBranch;
+    gridFilter.innerHTML = `<option value="">全部网格</option>${(data.availableGrids || []).map((grid) => `<option value="${escapeHtml(grid)}">${escapeHtml(grid)}</option>`).join('')}`;
+    gridFilter.value = activeGrid;
+  }
   const addressSubmit = document.querySelector('#offlineSettingsForm button[type="submit"]');
   if (addressSubmit) addressSubmit.textContent = '保存为新订单默认地址';
   const serviceToggle = document.getElementById('serviceToggleButton');
@@ -158,7 +167,8 @@ function renderOverview(data) {
 }
 
 async function loadOverview() {
-  renderOverview(await api('/api/admin/overview'));
+  const query = activeGrid ? `?gridName=${encodeURIComponent(activeGrid)}` : '';
+  renderOverview(await api(`/api/admin/overview${query}`));
 }
 
 function closeModals() {
@@ -247,7 +257,12 @@ document.getElementById('exportSelectedButton')?.addEventListener('click', () =>
   const params = new URLSearchParams({ kinds: kinds.join(',') });
   if (from) params.set('from', from);
   if (to) params.set('to', to);
+  if (activeGrid) params.set('gridName', activeGrid);
   location.assign(`/api/admin/export-selected.xlsx?${params}`);
+});
+document.getElementById('gridFilter')?.addEventListener('change', async (event) => {
+  activeGrid = event.currentTarget.value;
+  await loadOverview();
 });
 document.getElementById('offlineSettingsForm').addEventListener('submit', async (event) => {
   event.preventDefault();
