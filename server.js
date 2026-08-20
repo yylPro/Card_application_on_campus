@@ -1318,6 +1318,18 @@ async function api(req, res, url) {
     const schoolCode = safe(body.schoolCode, 40);
     const studentSession = sessionFor(req, 'student');
     const phone = studentSession?.user || safe(body.phone, 20);
+    // 校园账号预约与小程序一致：使用提交预约的手机号直接查询本人订单。
+    if (!studentSession && !schoolCode && validPhone(phone) && !validPassword(body.password)) {
+      const records = db.orders
+        .filter((record) => record.phone === phone && isCampusAccountOrder(record))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .map(async ({ id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offlineLocation, offlineFeatureCode, offlineVerifiedAt }) => {
+          const record = findRecord(db, id);
+          const voucher = db.vouchers.find((item) => item.recordId === id);
+          return { id, type, status, createdAt, appointment, operator, selectedNumber, campusNumber, college, deliveryStatus, activationStatus, verificationStatus, fulfillmentMethod, deliveryRecipient, deliveryPhone, completionConfirmedAt, rating, offline: offlineLocation && offlineFeatureCode ? { location: offlineLocation, featureCode: offlineFeatureCode, verifiedAt: offlineVerifiedAt || '' } : null, voucher: await studentVoucher(voucher, record, url) };
+        });
+      return json(res, 200, { records: await Promise.all(records) });
+    }
     if (studentSession || validPassword(body.password)) {
       if (!validPhone(phone)) return json(res, 400, { error: '请输入正确的 11 位手机号码' });
       if (!rateLimit(authAttempts, `student-login:${clientIp(req)}`, 10, 15 * 60 * 1000)) return json(res, 429, { error: '登录尝试次数过多，请 15 分钟后再试' });

@@ -673,6 +673,15 @@ test('学生可用手机号和办理密码查询本人服务', async () => {
   assert.ok(records.body.records.some((record) => record.id === created.body.record.id));
 });
 
+test('校园账号预约可仅用手机号查询，与小程序流程一致', async () => {
+  const phone = '13700000011';
+  const created = await createOrder(phone, { type: '校园账号预约' });
+  assert.equal(created.response.status, 201);
+  const records = await request('/api/student/records', { method: 'POST', body: { phone } });
+  assert.equal(records.response.status, 200);
+  assert.ok(records.body.records.some((record) => record.id === created.body.record.id));
+});
+
 test('CRM、实名制与装维系统尚未接入，测试只验证内部状态字段', async () => {
   const overview = await request('/api/admin/overview', { cookie: await adminCookie() });
   assert.equal(overview.response.status, 200);
