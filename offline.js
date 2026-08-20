@@ -10,6 +10,8 @@ let pendingCampusNumber = '';
 let pendingProofFile = '';
 let scanStream = null;
 let scanTimer = null;
+let scanCanvas = null;
+let scanContext = null;
 
 function showToast(message, isError = false) {
   toast.textContent = message;
@@ -110,33 +112,44 @@ async function stopScanner() {
   if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
   if (scanStream) scanStream.getTracks().forEach((track) => track.stop());
   scanStream = null;
+  const video = document.getElementById('qrVideo');
+  if (video) video.srcObject = null;
   document.getElementById('offlineScanner').hidden = true;
 }
 
 document.getElementById('scanQrButton').addEventListener('click', async () => {
-  if (!('BarcodeDetector' in window)) return showToast('当前浏览器不支持二维码扫描，请手工输入核验码', true);
   try {
-    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('SECURE_CONTEXT');
     scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
     const video = document.getElementById('qrVideo');
     video.srcObject = scanStream;
     await video.play();
     document.getElementById('offlineScanner').hidden = false;
+    scanCanvas = document.createElement('canvas');
+    scanContext = scanCanvas.getContext('2d', { willReadFrequently: true });
     const scan = async () => {
       if (!scanStream) return;
       try {
-        const codes = await detector.detect(video);
-        if (codes[0]?.rawValue) {
-          manualForm.elements.featureCode.value = codes[0].rawValue.trim();
-          await stopScanner();
-          showToast('二维码已识别，请继续核对身份证和校园号码');
-          return;
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth && video.videoHeight && window.jsQR) {
+          scanCanvas.width = video.videoWidth;
+          scanCanvas.height = video.videoHeight;
+          scanContext.drawImage(video, 0, 0, scanCanvas.width, scanCanvas.height);
+          const image = scanContext.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
+          const code = window.jsQR(image.data, image.width, image.height, { inversionAttempts: 'attemptBoth' });
+          const rawValue = String(code?.data || '').trim().toUpperCase();
+          const match = rawValue.match(/CAMPUS-[A-Z0-9_-]{4,40}/);
+          if (match) {
+            manualForm.elements.featureCode.value = match[0];
+            await stopScanner();
+            showToast('二维码已识别，请继续填写校园号码');
+            return;
+          }
         }
       } catch { /* Camera frames can be unavailable briefly. */ }
       scanTimer = setTimeout(scan, 250);
     };
     scan();
-  } catch (error) { await stopScanner(); showToast(error.name === 'NotAllowedError' ? '请允许摄像头权限后再扫码' : '无法打开摄像头，请手工输入核验码', true); }
+  } catch (error) { await stopScanner(); showToast(error.name === 'NotAllowedError' ? '请允许摄像头权限后再扫码' : error.message === 'SECURE_CONTEXT' ? '请使用 https://leptla.com 打开，不能使用 http 或微信预览地址' : '无法打开摄像头，请检查浏览器权限', true); }
 });
 document.getElementById('stopScanButton').addEventListener('click', stopScanner);
 

@@ -2026,7 +2026,7 @@ const publicMiniprogramExtensions = new Set(['.js', '.json', '.wxml', '.wxss']);
 function isPublicStaticFile(file) {
   const relative = path.relative(ROOT, file).split(path.sep).join('/');
   if (!relative || relative.startsWith('../') || path.isAbsolute(relative)) return false;
-  if (publicStaticFiles.has(relative)) return true;
+  if (publicStaticFiles.has(relative) || relative === 'node_modules/jsqr/dist/jsQR.js') return true;
   // WeChat domain verification files are random 32-character hex TXT files at the site root.
   if (/^[a-f0-9]{32}\.txt$/i.test(relative)) return true;
   return relative.startsWith('miniprogram/') && publicMiniprogramExtensions.has(path.extname(relative).toLowerCase());
@@ -2056,6 +2056,7 @@ function staticFile(req, res, url) {
   if (pathname === '/merchant' || pathname === '/merchant/') pathname = '/merchant.html';
   if (pathname === '/student/login') pathname = '/student-login.html';
   if (pathname === '/student/register') pathname = '/student-login.html';
+  if (pathname === '/vendor/jsqr.js') pathname = '/node_modules/jsqr/dist/jsQR.js';
   const file = path.resolve(ROOT, `.${pathname}`);
   if (!isPublicStaticFile(file) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return text(res, 404, 'Not found');
   res.writeHead(200, {

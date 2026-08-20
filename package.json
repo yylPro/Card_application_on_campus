@@ -10,6 +10,7 @@
     "auth-phone": "node scripts/manage-authorized-phone.js"
   },
   "dependencies": {
+    "jsqr": "^1.4.0",
     "mssql": "^12.7.0",
     "mysql2": "^3.23.2",
     "qrcode": "^1.5.4",
