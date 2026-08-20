@@ -15,14 +15,14 @@
     <main class="offline-main">
       <section class="offline-heading">
         <p class="eyebrow">线下实体端</p>
-        <h1>实名验证消息导入</h1>
-        <p>核验特征码、校园号码和身份证信息后，系统将订单转交商家确认激活。</p>
+        <h1>实名核验</h1>
+        <p>扫描学生预约二维码，填写校园号码并上传套卡实名已激活页面。</p>
       </section>
       <section class="offline-manual">
-        <div><h2>登记单条实名结果</h2><p>工作人员核对学生本人和身份证原件后，录入学生出示的特征码。</p></div>
+        <div><h2>核验学生预约</h2><p>请使用学生订单二维码完成核验。</p></div>
         <form id="offlineManualForm">
-          <div class="form-row"><label>学生特征码<input name="featureCode" maxlength="40" autocomplete="off" required placeholder="扫码后自动填入，也可手工输入" /><button class="outline-button" id="scanQrButton" type="button">扫描学生二维码</button></label><label>校园号码<input name="campusNumber" maxlength="80" autocomplete="off" required placeholder="请输入校园号码" /></label></div>
-          <label>身份证号码<input name="idCard" maxlength="18" pattern="[0-9]{17}[0-9Xx]" autocomplete="off" required placeholder="请输入完整身份证号" /></label>
+          <label>学生订单核验码<input name="featureCode" maxlength="40" autocomplete="off" required placeholder="扫码后自动填入，也可手工输入" /><button class="outline-button" id="scanQrButton" type="button">扫描学生二维码</button></label>
+          <label>校园号码<input name="campusNumber" maxlength="80" autocomplete="off" required placeholder="请输入校园号码" /></label>
           <label>套卡实名已激活页面<input name="activationProofFile" type="file" accept="image/*,.pdf" required /></label>
           <label>实名验证消息/流水号（可选）<input name="reference" maxlength="200" placeholder="例如：现场核验流水号" /></label>
           <button class="primary-button" type="submit">匹配学生订单</button>
@@ -33,16 +33,6 @@
         <div><p class="eyebrow">匹配成功</p><h2>请工作人员核对后提交实名结果</h2></div>
         <div class="offline-match-detail" id="offlineMatchDetail"></div>
         <div class="offline-match-actions"><button class="outline-button" id="cancelOfflineMatch" type="button">返回重填</button><button class="primary-button" id="confirmOfflineActivation" type="button">提交实名核验</button></div>
-      </section>
-      <section class="offline-import">
-        <div>
-          <h2>批量导入验证结果</h2>
-          <p>首行必须包含“特征码”和“身份证号码”；可附加“实名验证消息”或“验证流水号”。</p>
-        </div>
-        <form id="offlineImportForm">
-          <label>实名验证 Excel<input type="file" name="verificationFile" accept=".xlsx,.xls,.csv" required /></label>
-          <button class="primary-button" type="submit">导入并提交实名核验</button>
-        </form>
       </section>
       <section class="offline-result" id="offlineResult" hidden aria-live="polite"></section>
     </main>

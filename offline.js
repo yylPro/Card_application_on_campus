@@ -48,20 +48,19 @@ manualForm.addEventListener('submit', async (event) => {
   button.textContent = '正在匹配...';
   try {
     const data = Object.fromEntries(new FormData(manualForm).entries());
-    const response = await fetch('/api/offline/matches', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(manualForm).entries()))
+    data.activationProofFile = await readFile(manualForm.elements.activationProofFile.files[0]);
+    const response = await fetch('/api/offline/import-verification', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ featureCode: data.featureCode, campusNumber: data.campusNumber, activationProofFile: data.activationProofFile, result: 'verified' }] })
     });
     const result = await response.json();
     if (response.status === 401) return location.replace('/offline/login');
     if (!response.ok) throw new Error(result.error || '登记失败');
-    pendingMatchToken = result.matchToken;
-    pendingReference = data.reference || '';
-    pendingCampusNumber = data.campusNumber || result.record.campusNumber || '';
-    pendingProofFile = await readFile(manualForm.elements.activationProofFile.files[0]);
-    matchDetail.innerHTML = `<dl><div><dt>学生姓名</dt><dd>${escapeHtml(result.record.name)}</dd></div><div><dt>联系电话</dt><dd>${escapeHtml(result.record.phone)}</dd></div><div><dt>学校</dt><dd>${escapeHtml(result.record.schoolName)}</dd></div><div><dt>校园号码</dt><dd>${escapeHtml(pendingCampusNumber)}</dd></div></dl>`;
-    matchPanel.hidden = false;
-    matchPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    showToast('已匹配到学生订单，请核对');
+    const item = result.results?.[0];
+    if (!item?.success) throw new Error(item?.message || '核验失败');
+    resultPanel.hidden = false;
+    resultPanel.innerHTML = `<strong>实名核验已提交</strong><span>${escapeHtml(item.message || '请等待商家确认激活')}</span>`;
+    manualForm.reset();
+    showToast('实名核验已提交');
   } catch (error) {
     showToast(error.message || '登记失败，请稍后重试', true);
   } finally {
@@ -70,7 +69,7 @@ manualForm.addEventListener('submit', async (event) => {
   }
 });
 
-document.getElementById('cancelOfflineMatch').addEventListener('click', () => {
+document.getElementById('cancelOfflineMatch')?.addEventListener('click', () => {
   pendingMatchToken = '';
   pendingReference = '';
   pendingCampusNumber = '';
@@ -78,7 +77,7 @@ document.getElementById('cancelOfflineMatch').addEventListener('click', () => {
   manualForm.elements.featureCode.focus();
 });
 
-document.getElementById('confirmOfflineActivation').addEventListener('click', async (event) => {
+document.getElementById('confirmOfflineActivation')?.addEventListener('click', async (event) => {
   const button = event.currentTarget;
   if (!pendingMatchToken) return showToast('匹配确认已失效，请重新匹配', true);
   button.disabled = true;
@@ -141,7 +140,7 @@ document.getElementById('scanQrButton').addEventListener('click', async () => {
 });
 document.getElementById('stopScanButton').addEventListener('click', stopScanner);
 
-form.addEventListener('submit', async (event) => {
+form?.addEventListener('submit', async (event) => {
   event.preventDefault();
   const button = form.querySelector('[type="submit"]');
   const file = form.elements.verificationFile.files[0];
