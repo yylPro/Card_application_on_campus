@@ -88,9 +88,18 @@ const BUILTIN_OFFLINE_PHONE_HASHES = IS_PRODUCTION ? [] : [
   'aa203253a80f25c968cfa3699254615dca7355e09fba43b659de21dd76a637c3'
 ];
 const OFFLINE_PHONE_HASHES = new Set([...BUILTIN_OFFLINE_PHONE_HASHES, ...(process.env.OFFLINE_AUTHORIZED_PHONE_HASHES || '').split(',')].map((value) => value.trim()).filter(Boolean));
+const BUILTIN_MERCHANT_PHONE_HASHES = IS_PRODUCTION ? [] : [
+  '9e9dd92478bb81eba10b1500fd3f828e8f06bfa5910aa45c421de19f11ed5e01', '17a5dcbab6bfa66f4bb90fbb1ea529319f8ac9362c65acec29e8eef2b27a2526',
+  'fe5c10bed61eae8f410ae47ce191af8988562a6613006bf3087a807a47184d6b', 'a39cabd3fbbf860a289e99cbbd1220e75e9e126a41009fb1abf4b1807190ff90',
+  'd9a669102874f7b208c50017804e1fc44249fff53dddfd6b60b8776079877702', '272806ab1898603ea81ed9e8a58c4823fb710ed55869a1165d61e783e46e4bef',
+  '9c293516f8c2f28d5612599a489fe81de74c2135f7105213ecfd1b462168384e', '216b74b016baa96c96e4f9717adcc705d71df172105144d6c9e1cfd65d14bc28',
+  '947c0be2f3c6fd7bf7cd524501c4ea3bfa37850bdf26d3571ac02e291e5b12a8', 'b0643f0d280f62906b39f9730d2b8392f8488de42cf560ed4e4f37289cba8670'
+];
+const MERCHANT_PHONE_HASHES = new Set([...BUILTIN_MERCHANT_PHONE_HASHES, ...(process.env.MERCHANT_AUTHORIZED_PHONE_HASHES || '').split(',')].map((value) => value.trim()).filter(Boolean));
 const WECHAT_OFFICIAL_APP_ID = process.env.WECHAT_OFFICIAL_APP_ID || '';
 const WECHAT_OFFICIAL_APP_SECRET = process.env.WECHAT_OFFICIAL_APP_SECRET || '';
 const WECHAT_MINIPROGRAM_APP_ID = process.env.WECHAT_MINIPROGRAM_APP_ID || '';
+const WECHAT_MINIPROGRAM_APP_SECRET = process.env.WECHAT_MINIPROGRAM_APP_SECRET || '';
 const WECHAT_MINIPROGRAM_HOME = process.env.WECHAT_MINIPROGRAM_HOME || 'pages/home/home';
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const OTP_TTL_MS = 5 * 60 * 1000;
@@ -206,6 +215,7 @@ function normalizeDb(db) {
   db.studentAccounts = Array.isArray(db.studentAccounts) ? db.studentAccounts : [];
   db.adminAccounts = Array.isArray(db.adminAccounts) ? db.adminAccounts : [];
   db.offlineAccounts = Array.isArray(db.offlineAccounts) ? db.offlineAccounts : [];
+  db.merchantAccounts = Array.isArray(db.merchantAccounts) ? db.merchantAccounts : [];
   db.numberOffers = Array.isArray(db.numberOffers) ? db.numberOffers : [];
   if (!IS_PRODUCTION) {
     const retiredTestOfferIds = new Set(['TEST-1380001', 'TEST-1380002', 'TEST-1380003']);
@@ -391,6 +401,23 @@ function hashPhone(phone) {
   return crypto.createHash('sha256').update(String(phone)).digest('hex');
 }
 
+const WECHAT_BRANCH_PHONE_HASHES = new Set([
+  '5d8c1379cdc1549ad2f4b0c8d80f9b3d0cdb48c2e305d32b450334160885a6d9',
+  '91bfb9037b45bca2c94ad62c883acd6cb5a1f992a0e6d37366d7f7a7a63f8a88',
+  '7b7720561af334aa42fe0a08fbdcba2fc01e7ffde472c53248db8aaf51af90d1',
+  'c8552b94751a59c2243a8812ac7cc5e7504c62a3bfbc2ce2432af33f800f638b',
+  '6efbd11efcd61924e412d31fe87917b4b88b3b6183967fda5d064efef669759a',
+  '322c34aaa620caddd6b08ac38ba81dfe5b1118474aae1051ac19c6dd850bede3'
+]);
+const WECHAT_GRID_META = new Map([
+  ['15900000001', '凤岭北'], ['15900000002', '仙葫'], ['15900000003', '建政'], ['15900000004', '新竹'],
+  ['15900000005', '中山'], ['15900000006', '津头'], ['15900000007', '南湖'], ['15900000008', '凤岭南'],
+  ['18900000001', '凤岭北'], ['18900000002', '仙葫'], ['18900000003', '建政'], ['18900000004', '新竹'],
+  ['18900000005', '中山'], ['18900000006', '津头'], ['18900000007', '南湖'], ['18900000008', '凤岭南'],
+  // 开发测试网格账号
+  ['13987654321', '凤岭北'], ['18600000001', '凤岭北'], ['18500000001', '凤岭北']
+]);
+
 function validIdCard(value) {
   const normalized = String(value || '').toUpperCase();
   if (!/^\d{17}[\dX]$/.test(normalized)) return false;
@@ -558,6 +585,8 @@ function sessionCookie(token, maxAge, role) {
     ? 'campus_student_session'
     : role === 'offline'
       ? 'campus_offline_session'
+      : role === 'merchant'
+        ? 'campus_merchant_session'
       : 'campus_admin_session';
   return `${name}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${HTTPS_ENABLED || IS_PRODUCTION ? '; Secure' : ''}`;
 }
@@ -567,8 +596,11 @@ function sessionFor(req, role = 'admin') {
     ? 'campus_student_session'
     : role === 'offline'
       ? 'campus_offline_session'
+      : role === 'merchant'
+        ? 'campus_merchant_session'
       : 'campus_admin_session';
-  const token = parseCookies(req)[cookieName];
+  const bearer = String(req.headers.authorization || '').match(/^Bearer\s+(.+)$/i);
+  const token = (bearer && bearer[1]) || parseCookies(req)[cookieName];
   if (!token) return null;
   const session = sessions.get(token);
   if (!session || session.role !== role || session.expiresAt <= Date.now()) {
@@ -603,6 +635,76 @@ function requireOffline(req, res) {
     return null;
   }
   return session;
+}
+
+function requireMerchant(req, res) {
+  const session = sessionFor(req, 'merchant');
+  if (!session) {
+    json(res, 401, { error: '请先登录商家兑换端' });
+    return null;
+  }
+  return session;
+}
+
+function wechatAccountStore(db, role) {
+  if (role === 'operator') return db.adminAccounts;
+  if (role === 'offline') return db.offlineAccounts;
+  return db.merchantAccounts;
+}
+
+function wechatRoleAuthorized(phone, role) {
+  const digest = hashPhone(phone);
+  if (role === 'operator') return ADMIN_PHONE_HASHES.has(digest);
+  if (role === 'offline') return OFFLINE_PHONE_HASHES.has(digest);
+  if (role === 'merchant') return MERCHANT_PHONE_HASHES.has(digest);
+  return false;
+}
+
+function wechatAccountFor(db, role, phone) {
+  return wechatAccountStore(db, role).find((item) => item.phoneHash === hashPhone(phone) && item.status !== 'disabled');
+}
+
+function wechatAccountId(account, role) {
+  return account.id || account._id || `${role}-${account.phoneHash.slice(0, 12)}`;
+}
+
+function wechatAccountGrid(phone, requestedGrid) {
+  return WECHAT_GRID_META.get(phone) || safe(requestedGrid, 40);
+}
+
+function wechatOperatorScope(phone) {
+  return WECHAT_BRANCH_PHONE_HASHES.has(hashPhone(phone)) ? 'branch' : 'grid';
+}
+
+function wechatSessionAccount(db, req, role) {
+  const session = sessionFor(req, role === 'operator' ? 'admin' : role);
+  if (!session) return null;
+  return { session, account: wechatAccountFor(db, role, session.user) };
+}
+
+function wechatExportFile(records, kind) {
+  const rows = records.map((record) => ({
+    服务编码: record.id,
+    所属网格: record.gridName || '',
+    学校: record.schoolName || '',
+    学院: record.college || '',
+    学号: record.studentNo || '',
+    姓名: record.name || '',
+    身份证号码: record.idCard || '',
+    特征码: record.offlineFeatureCode || '',
+    校园号码: record.campusNumber || record.selectedNumber || '',
+    地址: record.address || record.shippingAddress || '',
+    线下实名地址: record.offlineLocation || '',
+    创建时间: record.createdAt || '',
+    核验时间: record.offlineVerifiedAt || '',
+    实名人员姓名: record.verifiedByName || '',
+    实名人员电话: record.verifiedByPhone || '',
+    商家姓名: record.merchantName || '',
+    商家电话: record.merchantPhone || ''
+  }));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), kind || '校园订单');
+  return { fileName: `campus-${Date.now()}.xlsx`, base64: XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' }) };
 }
 
 function featureCode() {
@@ -910,6 +1012,132 @@ async function api(req, res, url) {
     || url.pathname === '/api/auth/session' || url.pathname === '/api/auth/logout';
   if (!db.settings.serviceEnabled && !adminControlRequest) {
     return json(res, 503, { error: '三端服务暂时关闭，请联系运营商', serviceUnavailable: true });
+  }
+
+  // 微信小程序适配层：小程序与网页版共用同一份 CampusService 数据。
+  if (req.method === 'POST' && url.pathname === '/api/wechat/login') {
+    let body; try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    const code = safe(body.code, 256);
+    if (!code) return json(res, 400, { error: '微信登录凭证为空' });
+    let openid = '';
+    if (WECHAT_MINIPROGRAM_APP_ID && WECHAT_MINIPROGRAM_APP_SECRET) {
+      try {
+        const wxUrl = new URL('https://api.weixin.qq.com/sns/jscode2session');
+        wxUrl.searchParams.set('appid', WECHAT_MINIPROGRAM_APP_ID); wxUrl.searchParams.set('secret', WECHAT_MINIPROGRAM_APP_SECRET); wxUrl.searchParams.set('js_code', code); wxUrl.searchParams.set('grant_type', 'authorization_code');
+        const wxResponse = await fetch(wxUrl); const result = await wxResponse.json();
+        if (!result.openid) return json(res, 401, { error: result.errmsg || '微信登录凭证无效' });
+        openid = result.openid;
+      } catch { return json(res, 503, { error: '微信登录服务暂时不可用' }); }
+    } else if (!IS_PRODUCTION) openid = `dev-${crypto.createHash('sha256').update(code).digest('hex').slice(0, 32)}`;
+    else return json(res, 503, { error: '服务器尚未配置 WECHAT_MINIPROGRAM_APP_SECRET' });
+    const token = createSession(openid, 'student');
+    return json(res, 200, { token, openid, role: 'student' }, { 'Set-Cookie': sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000), 'student') });
+  }
+
+  if (url.pathname.startsWith('/api/wechat/')) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    const rolePath = parts.slice(2).join('/');
+    const readJson = async () => { try { return await parseBody(req); } catch (error) { throw error; } };
+    const accountResult = (role) => wechatSessionAccount(db, req, role);
+    const accountResponse = (account, role, phone) => ({ accountId: wechatAccountId(account, role), phone, name: account.name || '', gridName: account.gridName || wechatAccountGrid(phone, ''), operatorScope: role === 'operator' ? wechatOperatorScope(phone) : undefined });
+
+    if (req.method === 'POST' && (rolePath === 'staff/login' || rolePath === 'staff/register')) {
+      let body; try { body = await readJson(); } catch (error) { return json(res, 400, { error: error.message }); }
+      const role = ['operator', 'offline', 'merchant'].includes(body.role) ? body.role : '';
+      const phone = safe(body.phone, 20); const password = String(body.password || '');
+      if (!role || !validPhone(phone)) return json(res, 400, { error: '账号类型或手机号无效' });
+      if (!wechatRoleAuthorized(phone, role)) return json(res, 403, { error: '该手机号未获授权' });
+      const store = wechatAccountStore(db, role); let account = wechatAccountFor(db, role, phone);
+      if (rolePath === 'staff/register') {
+        if (account) return json(res, 409, { error: '该授权手机号已注册，请直接登录' });
+        if (!validPassword(password) || password !== String(body.confirmPassword || '')) return json(res, 400, { error: '密码须为 9-15 位，并同时包含大小写字母和数字，且两次一致' });
+        const grid = role === 'merchant' ? '' : wechatAccountGrid(phone, safe(body.gridName, 40));
+        account = { id: id(role.toUpperCase()), phoneHash: hashPhone(phone), passwordHash: hashPassword(password), name: safe(body.name, 40), gridName: grid, status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+        store.push(account); writeDb(db);
+      } else {
+        if (!account || !verifyPassword(password, account.passwordHash)) return json(res, 401, { error: '账号或密码错误，请先注册或联系管理员' });
+      }
+      const sessionRole = role === 'operator' ? 'admin' : role; const token = createSession(phone, sessionRole);
+      return json(res, 200, { ...accountResponse(account, role, phone), token, role }, { 'Set-Cookie': sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000), sessionRole) });
+    }
+
+    if (req.method === 'POST' && (rolePath === 'orders' || rolePath === 'tickets')) {
+      const student = requireStudent(req, res); if (!student) return;
+      let body; try { body = await readJson(); } catch (error) { return json(res, 400, { error: error.message }); }
+      const schoolCode = safe(body.schoolCode, 40); const school = db.schools.find((item) => item.code === schoolCode && item.status === 'active');
+      if (!school) return json(res, 400, { error: '学校信息无效，请重新选择学校' });
+      const record = { id: id(rolePath === 'orders' ? 'ORD' : 'TKT'), openid: student.user, schoolCode, schoolName: school.name, name: safe(body.name, 40), studentNo: safe(body.studentNo, 60), idCard: safe(body.idCard, 18).toUpperCase(), college: safe(body.college, 80), phone: safe(body.phone, 20), backupPhone: '', address: safe(body.address, 160), shippingAddress: '', type: safe(body.type, 60) || '校园账号预约', detail: '', selectedNumber: '', operator: '', campusNumber: '', serviceConsent: body.serviceConsent === true, marketingConsent: false, status: 'pending', verificationStatus: 'pending_manual', deliveryStatus: 'not_applicable', activationStatus: 'pending', subsidyStatus: 'not_applicable', subsidyAmount: 0, internalNote: '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), offlineLocation: db.settings.offlineVerificationAddress || '', offlineFeatureCode: uniqueFeatureCode(db), offlineAssignedAt: new Date().toISOString(), offlineVerifiedAt: '', verifiedByName: '', verifiedByPhone: '', merchantName: '', merchantPhone: '', merchantAccountId: '', activatedAt: '' };
+      if (!record.name || !record.college || !record.phone || !record.serviceConsent) return json(res, 400, { error: '请完整填写姓名、学院、联系电话并同意信息收集说明' });
+      if (!validPhone(record.phone)) return json(res, 400, { error: '请输入正确的现有联系电话' });
+      if (!validIdCard(record.idCard)) return json(res, 400, { error: '身份证号格式或校验位不正确，请核对后重试' });
+      (rolePath === 'orders' ? db.orders : db.tickets).push(record); audit(db, 'wechat.student.submitted', student.user, record.id, { schoolCode }); writeDb(db);
+      return json(res, 201, { record: { id: record.id, type: record.type, status: record.status, verificationStatus: record.verificationStatus, offlineFeatureCode: record.offlineFeatureCode } });
+    }
+
+    if (req.method === 'POST' && rolePath === 'student/records') {
+      const student = requireStudent(req, res); if (!student) return;
+      const records = [...db.orders, ...db.tickets].filter((record) => record.openid === student.user).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map((record) => ({ id: record.id, type: record.type, status: record.status, verificationStatus: record.verificationStatus, createdAt: record.createdAt, appointment: record.appointment || '', operator: record.operator || '', selectedNumber: record.selectedNumber || '', campusNumber: record.campusNumber || '', address: record.address || '', deliveryStatus: record.deliveryStatus, activationStatus: record.activationStatus, completionConfirmedAt: record.completionConfirmedAt || '', offline: record.offlineFeatureCode ? { location: record.offlineLocation || '', featureCode: record.offlineFeatureCode, verifiedAt: record.offlineVerifiedAt || '', activated: record.activationStatus === 'activated' } : null }));
+      return json(res, 200, { records });
+    }
+
+    if (req.method === 'POST' && rolePath === 'uploads') {
+      const session = sessionFor(req, 'offline'); if (!session && !sessionFor(req, 'student')) return json(res, 401, { error: '请先登录' });
+      let body; try { body = await readJson(); } catch (error) { return json(res, 400, { error: error.message }); }
+      const encoded = String(body.fileBase64 || ''); if (!encoded || encoded.length > 7 * 1024 * 1024) return json(res, 400, { error: '上传文件为空或超过大小限制' });
+      const buffer = Buffer.from(encoded, 'base64'); if (!buffer.length) return json(res, 400, { error: '上传文件无效' });
+      const proofDir = path.join(DATA_DIR, 'activation-proofs'); fs.mkdirSync(proofDir, { recursive: true }); const fileId = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.bin`; fs.writeFileSync(path.join(proofDir, fileId), buffer);
+      return json(res, 201, { fileId });
+    }
+
+    if (req.method === 'POST' && rolePath === 'offline/import-verification') {
+      const result = accountResult('offline'); if (!result) { json(res, 401, { error: '请先登录线下实体端' }); return; }
+      let body; try { body = await readJson(); } catch (error) { return json(res, 400, { error: error.message }); }
+      const grid = result.account.gridName || wechatAccountGrid(result.session.user, body.gridName); const messages = Array.isArray(body.messages) ? body.messages : []; const output = [];
+      for (const message of messages.slice(0, 100)) {
+        const feature = safe(message.featureCode, 80); const campus = safe(message.campusNumber, 40); const record = [...db.orders, ...db.tickets].find((item) => (feature && item.offlineFeatureCode === feature) || (campus && item.campusNumber === campus));
+        if (!record) { output.push({ success: false, campusNumber: campus, featureCode: feature, message: '未找到对应订单', error: '未找到对应订单' }); continue; }
+        if (record.gridName && grid && record.gridName !== grid) { output.push({ success: false, campusNumber: campus, featureCode: feature, message: '该订单不属于当前网格', error: '该订单不属于当前网格' }); continue; }
+        record.campusNumber = campus || record.campusNumber; record.gridName = grid || record.gridName || ''; record.verificationStatus = 'verified'; record.activationStatus = 'pending_merchant'; record.status = 'completed'; record.offlineVerifiedAt = new Date().toISOString(); record.verifiedByPhone = result.session.user; record.verifiedByName = result.account.name || ''; record.activationProofFile = safe(message.activationProofFile, 160); record.updatedAt = new Date().toISOString(); output.push({ success: true, campusNumber: record.campusNumber, featureCode: record.offlineFeatureCode, displayNumber: record.selectedNumber || record.campusNumber, id: record.id, message: '实名核验成功' });
+      }
+      writeDb(db); return json(res, 200, { results: output });
+    }
+
+    if (req.method === 'POST' && rolePath === 'offline/export-verified') {
+      const result = accountResult('offline'); if (!result) { json(res, 401, { error: '请先登录线下实体端' }); return; }
+      const grid = result.account.gridName || wechatAccountGrid(result.session.user, ''); const records = [...db.orders, ...db.tickets].filter((item) => item.verificationStatus === 'verified' && (!grid || item.gridName === grid)); return json(res, 200, wechatExportFile(records, '已核验名单'));
+    }
+
+    if (req.method === 'POST' && rolePath === 'merchant/query') {
+      const result = accountResult('merchant'); if (!result) { json(res, 401, { error: '请先登录商家兑换端' }); return; }
+      let body; try { body = await readJson(); } catch (error) { return json(res, 400, { error: error.message }); }
+      const campus = safe(body.campusNumber, 40); const record = [...db.orders, ...db.tickets].find((item) => item.campusNumber === campus); if (!record) return json(res, 404, { error: '未找到对应校园号码订单' });
+      const canConfirm = record.verificationStatus === 'verified' && record.activationStatus !== 'activated';
+      return json(res, 200, { id: record.id, campusNumber: record.campusNumber, name: record.name, schoolName: record.schoolName, gridName: record.gridName || '', verificationStatus: record.verificationStatus, activationStatus: record.activationStatus, status: record.verificationStatus === 'verified' ? 'verified' : 'pending', message: canConfirm ? '已核验，可确认激活' : '该订单尚未线下核验', record: { id: record.id, name: record.name, schoolName: record.schoolName, college: record.college || '', campusNumber: record.campusNumber }, canConfirm });
+    }
+    if (req.method === 'POST' && rolePath === 'merchant/confirm-activation') {
+      const result = accountResult('merchant'); if (!result) { json(res, 401, { error: '请先登录商家兑换端' }); return; }
+      let body; try { body = await readJson(); } catch (error) { return json(res, 400, { error: error.message }); }
+      const record = [...db.orders, ...db.tickets].find((item) => item.campusNumber === safe(body.campusNumber, 40)); if (!record) return json(res, 404, { error: '未找到对应订单' }); if (record.verificationStatus !== 'verified') return json(res, 409, { error: '该订单尚未线下核验，不能确认激活' });
+      record.activationStatus = 'activated'; record.status = 'completed'; record.merchantName = result.account.name || ''; record.merchantPhone = result.session.user; record.merchantAccountId = wechatAccountId(result.account, 'merchant'); record.activatedAt = new Date().toISOString(); record.updatedAt = record.activatedAt; writeDb(db); return json(res, 200, { message: '确认激活成功', id: record.id });
+    }
+
+    if (req.method === 'POST' && rolePath === 'operator/orders') {
+      const result = accountResult('operator'); if (!result) { json(res, 401, { error: '请先登录运营商端' }); return; }
+      let body; try { body = await readJson(); } catch (error) { return json(res, 400, { error: error.message }); }
+      const scope = wechatOperatorScope(result.session.user); const accountGrid = result.account.gridName || wechatAccountGrid(result.session.user, ''); const selectedGrid = scope === 'branch' ? safe(body.gridName, 40) : accountGrid; const records = [...db.orders, ...db.tickets].filter((item) => !selectedGrid || selectedGrid === '全部网格' || item.gridName === selectedGrid).map((item) => ({ ...item, featureCode: item.offlineFeatureCode || '', outletAddress: item.offlineLocation || '' })); return json(res, 200, { orders: records, total: records.length, scope, accountGrid, gridOptions: [...new Set(db.orders.concat(db.tickets).map((item) => item.gridName).filter(Boolean))].sort() });
+    }
+    if (req.method === 'POST' && (rolePath === 'operator/offline-settings' || rolePath === 'operator/offline-settings/')) {
+      const result = accountResult('operator'); if (!result) { json(res, 401, { error: '请先登录运营商端' }); return; } return json(res, 200, { settings: { verificationAddress: db.settings.offlineVerificationAddress || '' } });
+    }
+    if (req.method === 'PATCH' && rolePath === 'operator/offline-settings') {
+      const result = accountResult('operator'); if (!result) { json(res, 401, { error: '请先登录运营商端' }); return; }
+      let body; try { body = await readJson(); } catch (error) { return json(res, 400, { error: error.message }); } const action = body.action === 'clear' ? 'clear' : 'set'; const address = safe(body.verificationAddress, 160); if (action === 'set' && !address) return json(res, 400, { error: '请输入统一线下办理地址' }); db.settings.offlineVerificationAddress = action === 'clear' ? '' : address; writeDb(db); return json(res, 200, { verificationAddress: db.settings.offlineVerificationAddress, affectedOrders: 0 });
+    }
+    if (req.method === 'POST' && rolePath.startsWith('operator/export-')) {
+      const result = accountResult('operator'); if (!result) { json(res, 401, { error: '请先登录运营商端' }); return; }
+      let body; try { body = await readJson(); } catch (error) { return json(res, 400, { error: error.message }); } const scope = wechatOperatorScope(result.session.user); const grid = scope === 'branch' ? safe(body.gridName, 40) : (result.account.gridName || wechatAccountGrid(result.session.user, '')); let records = [...db.orders, ...db.tickets].filter((item) => !grid || grid === '全部网格' || item.gridName === grid); const kinds = Array.isArray(body.kinds) ? body.kinds : [rolePath.includes('activated') ? 'activated' : 'pending']; if (kinds.length === 1) records = records.filter((item) => kinds[0] === 'activated' ? item.activationStatus === 'activated' : item.activationStatus !== 'activated'); return json(res, 200, wechatExportFile(records, '运营商订单'));
+    }
+    return json(res, 404, { error: '微信小程序接口不存在' });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/auth/login') {
