@@ -14,8 +14,7 @@
         <nav class="admin-nav">
           <a class="active" href="#overview">服务概览</a>
           <a href="#offlineSettings">线下实名地址</a>
-          <a href="#schoolQr">学校二维码</a>
-          <a href="#records">订单与工单</a>
+          <a href="#records">订单</a>
         </nav>
           <div class="admin-side-note"><strong>数据权限提示</strong><p>设置线下地址后，校园账号预约会自动获得地址和唯一特征码。运营商仍可查看和人工补充处理；实名核验由线下实体端完成，最终激活由商家确认。</p></div>
       </aside>
@@ -29,9 +28,7 @@
         <section class="metric-grid admin-metrics">
           <article><span>学校入口访问</span><strong id="metricScans">0</strong><small>累计扫码/访问次数</small></article>
           <article><span>待处理预约</span><strong id="metricOrders">0</strong><small>校园账号预约及历史服务</small></article>
-          <article><span>待处理工单</span><strong id="metricTickets">0</strong><small>维修与业务咨询</small></article>
           <article><span>启用学校</span><strong id="metricSchools">0</strong><small>当前可用二维码入口</small></article>
-          <article><span>可选号码</span><strong id="metricNumbers">0</strong><small>未被预占的号码资源</small></article>
         </section>
 
         <section class="admin-section" id="numberExports">
@@ -54,11 +51,6 @@
           <small class="settings-meta" id="offlineSettingsMeta">尚未设置线下实名认证地址</small>
         </section>
 
-        <section class="admin-section" id="numberOffers">
-          <div class="section-title"><div><p class="eyebrow">号码资源</p><h2>可售号码与预占状态</h2></div><button class="primary-button" id="newNumberOfferButton">录入号码资源</button></div>
-          <div class="number-offer-list" id="numberOfferList"></div>
-        </section>
-
         <section class="admin-section" id="voucherFulfillment" hidden>
           <div class="section-title"><div><p class="eyebrow">实名完成</p><h2>签发线下领卡凭证</h2></div></div>
           <p>导入运营商实名认证完成文件。首行必须包含“服务编号”，可选“运营商”“运营商返回码”“有效期至”。系统只为每个服务编号签发一次二维码凭证。</p>
@@ -73,11 +65,10 @@
 
         <section class="admin-section" id="records">
           <div class="section-title records-heading">
-            <div><p class="eyebrow">服务中心</p><h2>订单与维修工单</h2></div>
+            <div><p class="eyebrow">服务中心</p><h2>订单</h2></div>
             <div class="record-filter" role="group" aria-label="记录筛选">
               <button class="active" data-filter="all">全部</button>
               <button data-filter="order">预约订单</button>
-              <button data-filter="ticket">维修工单</button>
             </div>
           </div>
           <div class="records-table" id="recordsTable"></div>

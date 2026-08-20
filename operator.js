@@ -73,10 +73,8 @@ function optionMarkup(options, selected) {
 }
 
 function allRecords() {
-  return [
-    ...(overview.orders || []).map((item) => ({ ...item, category: 'order' })),
-    ...(overview.tickets || []).map((item) => ({ ...item, category: 'ticket' }))
-  ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return (overview.orders || []).map((item) => ({ ...item, category: 'order' }))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
 function renderSchools(schools) {
@@ -116,19 +114,20 @@ function renderRecords() {
     table.innerHTML = '<p class="empty-state">暂无服务记录。</p>';
     return;
   }
-  table.innerHTML = `<div class="record-row record-table-head"><span>学生/学校</span><span>服务事项</span><span>预约/收货信息</span><span>状态</span><span>操作</span></div>${rows.map((record) => `
+  table.innerHTML = `<div class="record-row record-table-head"><span>学生/学校</span><span>服务事项</span><span>预约信息</span><span>状态</span><span>核验</span></div>${rows.map((record) => `
     <article class="record-row">
       <span><strong>${escapeHtml(record.name)}</strong><small>${escapeHtml(record.schoolName)} · ${escapeHtml(record.phone)}</small></span>
       <span><strong>${escapeHtml(record.type)}</strong><small>${escapeHtml(record.detail)}</small></span>
       <span><strong>${escapeHtml(record.type.includes('选号') ? record.address : record.appointment)}</strong><small>${formatTime(record.createdAt)}</small></span>
       <span><span class="status-chip ${escapeHtml(record.status)}">${labelFrom(statusOptions, record.status)}</span><small>${labelFrom(verificationOptions, record.verificationStatus)}</small></span>
-      <span><button class="outline-button record-open" data-record="${escapeHtml(record.id)}" data-category="${record.category}">${record.category === 'order' && record.type.includes('选号') ? '查看/人工处理' : '处理'}</button></span>
+      <span>${record.verificationStatus === 'verified' ? '已完成实名核验' : '待线下核验'}</span>
     </article>
   `).join('')}`;
 }
 
 function renderNumberOffers(offers) {
   const target = document.getElementById('numberOfferList');
+  if (!target) return;
   target.innerHTML = offers.map((offer) => `<article class="number-offer"><div><strong>${escapeHtml(offer.displayNumber)}</strong><small>${escapeHtml(offer.operator || '未指定运营商')} · ${escapeHtml(offer.planName)} · ${escapeHtml(offer.schoolCode)}</small></div><div><strong>${escapeHtml(String(offer.monthlyFee))} 元/月</strong><span class="status-chip ${offer.status === 'available' || offer.status === 'activated' ? 'completed' : 'pending'}">${offer.status === 'available' ? '可选' : offer.status === 'activated' ? '已激活' : '已预占'}</span></div></article>`).join('') || '<p class="empty-state">暂无号码资源。</p>';
 }
 
@@ -148,13 +147,13 @@ function renderOverview(data) {
     : '尚未设置线下实名认证地址';
   document.getElementById('metricScans').textContent = data.metrics.scans;
   document.getElementById('metricOrders').textContent = data.metrics.orders;
-  document.getElementById('metricTickets').textContent = data.metrics.tickets;
+  if (document.getElementById('metricTickets')) document.getElementById('metricTickets').textContent = data.metrics.tickets;
   document.getElementById('metricSchools').textContent = data.metrics.activeSchools;
-  document.getElementById('metricNumbers').textContent = data.metrics.availableNumbers;
+  if (document.getElementById('metricNumbers')) document.getElementById('metricNumbers').textContent = data.metrics.availableNumbers;
   renderSchools(data.schools);
   renderNumberOffers(data.numberOffers || []);
   const schoolSelect = document.getElementById('numberOfferSchool');
-  schoolSelect.innerHTML = data.schools.filter((school) => school.status === 'active').map((school) => `<option value="${escapeHtml(school.code)}">${escapeHtml(school.name)}</option>`).join('');
+  if (schoolSelect) schoolSelect.innerHTML = data.schools.filter((school) => school.status === 'active').map((school) => `<option value="${escapeHtml(school.code)}">${escapeHtml(school.name)}</option>`).join('');
   renderRecords();
 }
 
@@ -224,7 +223,7 @@ function openRecord(id, category) {
 }
 
 document.getElementById('newSchoolButton')?.addEventListener('click', () => openModal('schoolModal'));
-document.getElementById('newNumberOfferButton').addEventListener('click', () => openModal('numberOfferModal'));
+document.getElementById('newNumberOfferButton')?.addEventListener('click', () => openModal('numberOfferModal'));
 document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', closeModals));
 document.querySelectorAll('.modal-backdrop').forEach((modal) => {
   modal.addEventListener('click', (event) => { if (event.target === modal) closeModals(); });
@@ -398,7 +397,7 @@ document.getElementById('recordForm').addEventListener('submit', async (event) =
   }
 });
 
-document.getElementById('numberOfferForm').addEventListener('submit', async (event) => {
+document.getElementById('numberOfferForm')?.addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   const button = form.querySelector('[type="submit"]');
@@ -416,7 +415,7 @@ document.getElementById('numberOfferForm').addEventListener('submit', async (eve
   }
 });
 
-document.getElementById('importNumberOffersButton').addEventListener('click', async () => {
+document.getElementById('importNumberOffersButton')?.addEventListener('click', async () => {
   const file = document.getElementById('numberOfferFile').files[0];
   const schoolCode = document.getElementById('numberOfferSchool').value;
   if (!file) return showToast('请选择 Excel 或 CSV 文件', true);
