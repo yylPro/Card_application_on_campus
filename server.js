@@ -1432,6 +1432,7 @@ async function api(req, res, url) {
       id: id(url.pathname === '/api/orders' ? 'ORD' : 'TKT'),
       schoolCode,
       schoolName: school.name,
+      gridName: safe(body.gridName, 80),
       name: safe(body.name, 40),
       studentNo: safe(body.studentNo, 60),
       idCard: safe(body.idCard, 18).toUpperCase(),
