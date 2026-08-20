@@ -17,6 +17,12 @@ let wechatScanReady = false;
 
 function inWechat() { return /MicroMessenger/i.test(navigator.userAgent || ''); }
 if (inWechat()) document.getElementById('offlineScanner').hidden = true;
+function extractFeatureCode(value) {
+  const raw = String(value || '').trim().toUpperCase();
+  const prefixed = raw.match(/CAMPUS-[A-Z0-9_-]{4,40}/);
+  if (prefixed) return prefixed[0];
+  return /^[A-Z0-9][A-Z0-9_-]{3,39}$/.test(raw) ? raw : '';
+}
 function loadWechatSdk() {
   if (wechatSdkPromise) return wechatSdkPromise;
   wechatSdkPromise = new Promise((resolve, reject) => {
@@ -154,9 +160,9 @@ document.getElementById('scanQrButton').addEventListener('click', async () => {
       const wx = await prepareWechatScan();
       wx.scanQRCode({ needResult: 1, scanType: ['qrCode'], success: (result) => {
         const rawValue = String(result.resultStr || result.result || '').trim().toUpperCase();
-        const match = rawValue.match(/CAMPUS-[A-Z0-9_-]{4,40}/);
-        if (!match) return showToast('二维码中没有有效订单核验码', true);
-        manualForm.elements.featureCode.value = match[0];
+        const featureCode = extractFeatureCode(rawValue);
+        if (!featureCode) return showToast('二维码中没有有效订单核验码', true);
+        manualForm.elements.featureCode.value = featureCode;
         showToast('二维码已识别，请继续填写校园号码');
       }, fail: (error) => { if (!String(error?.errMsg || '').includes('cancel')) showToast('微信扫码失败，请重试', true); } });
       return;
@@ -179,9 +185,9 @@ document.getElementById('scanQrButton').addEventListener('click', async () => {
           const image = scanContext.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
           const code = window.jsQR(image.data, image.width, image.height, { inversionAttempts: 'attemptBoth' });
           const rawValue = String(code?.data || '').trim().toUpperCase();
-          const match = rawValue.match(/CAMPUS-[A-Z0-9_-]{4,40}/);
-          if (match) {
-            manualForm.elements.featureCode.value = match[0];
+          const featureCode = extractFeatureCode(rawValue);
+          if (featureCode) {
+            manualForm.elements.featureCode.value = featureCode;
             await stopScanner();
             showToast('二维码已识别，请继续填写校园号码');
             return;
