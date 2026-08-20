@@ -24,8 +24,7 @@
           <label>学生订单核验码<input name="featureCode" maxlength="40" autocomplete="off" required placeholder="扫码后自动填入，也可手工输入" /><button class="outline-button" id="scanQrButton" type="button">扫描学生二维码</button></label>
           <label>校园号码<input name="campusNumber" maxlength="80" autocomplete="off" required placeholder="请输入校园号码" /></label>
           <label>套卡实名已激活页面<input name="activationProofFile" type="file" accept="image/*,.pdf" required /></label>
-          <label>实名验证消息/流水号（可选）<input name="reference" maxlength="200" placeholder="例如：现场核验流水号" /></label>
-          <button class="primary-button" type="submit">匹配学生订单</button>
+          <button class="primary-button" type="submit">提交实名核验</button>
         </form>
       </section>
       <section class="offline-scanner" id="offlineScanner" hidden role="dialog" aria-modal="true"><div class="offline-scanner-head"><h2>扫描学生预约二维码</h2><button class="text-button" id="stopScanButton" type="button">关闭</button></div><p>请允许浏览器使用摄像头，将学生出示的订单二维码放入取景框。</p><video id="qrVideo" playsinline></video></section>

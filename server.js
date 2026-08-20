@@ -1736,11 +1736,33 @@ async function api(req, res, url) {
     return json(res, 201, { record: { id: record.id, selectedNumber: record.selectedNumber, activationStatus: record.activationStatus, verifiedAt: record.offlineVerifiedAt } });
   }
 
-  if (req.method === 'POST' && url.pathname === '/api/offline/verifications/import') {
+  if (req.method === 'POST' && (url.pathname === '/api/offline/verifications/import' || url.pathname === '/api/offline/import-verification')) {
     const session = requireOffline(req, res);
     if (!session) return;
     let body;
     try { body = await parseBody(req); } catch (error) { return json(res, 400, { error: error.message }); }
+    if (url.pathname === '/api/offline/import-verification' && Array.isArray(body.messages)) {
+      const results = [];
+      for (const message of body.messages) {
+        const code = safe(message.featureCode, 40).toUpperCase();
+        const campusNumber = safe(message.campusNumber, 80);
+        const candidate = db.orders.find((item) => isOfflineVerificationOrder(item)
+          && ((code && item.offlineFeatureCode === code) || (campusNumber && (item.campusNumber === campusNumber || item.selectedNumber === campusNumber))));
+        const record = candidate ? activateOfflineRecord(db, {
+          code: candidate.offlineFeatureCode,
+          idCard: candidate.idCard,
+          campusNumber,
+          activationProofFile: message.activationProofFile,
+          worker: session.user
+        }) : null;
+        results.push(record
+          ? { featureCode: code, campusNumber, success: true, message: record.activationStatus === 'pending_merchant' ? '实名验证成功，等待商家确认激活' : '实名验证成功，号码已激活', displayNumber: campusNumber }
+          : { featureCode: code, campusNumber, success: false, message: '校园号码或特征码不存在' });
+      }
+      if (!results.some((item) => item.success)) return json(res, 400, { results });
+      await writeDb(db);
+      return json(res, 201, { results });
+    }
     if (!body.fileBase64) return json(res, 400, { error: '请上传实名验证消息 Excel 文件' });
     let rows;
     try {

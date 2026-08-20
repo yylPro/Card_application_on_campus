@@ -104,7 +104,7 @@ manualForm.addEventListener('submit', async (event) => {
     showToast(error.message || '登记失败，请稍后重试', true);
   } finally {
     button.disabled = false;
-    button.textContent = '匹配学生订单';
+    button.textContent = '提交实名核验';
   }
 });
 
