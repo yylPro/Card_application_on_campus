@@ -13,7 +13,7 @@ const ROOT = path.resolve(__dirname, '..');
 const ENV_FILE = process.env.AUTHORIZED_PHONE_ENV_FILE
   ? path.resolve(process.env.AUTHORIZED_PHONE_ENV_FILE)
   : path.join(ROOT, '.env');
-const KEYS = { admin: 'ADMIN_AUTHORIZED_PHONE_HASHES', offline: 'OFFLINE_AUTHORIZED_PHONE_HASHES' };
+const KEYS = { admin: 'ADMIN_AUTHORIZED_PHONE_HASHES', offline: 'OFFLINE_AUTHORIZED_PHONE_HASHES', merchant: 'MERCHANT_AUTHORIZED_PHONE_HASHES' };
 
 function usage() {
   console.error('Usage: node scripts/manage-authorized-phone.js [admin|offline] [add|remove] [phone1 phone2 ...]');
@@ -27,6 +27,7 @@ function normalizeRole(value) {
   const role = String(value || '').trim().toLowerCase();
   if (['admin', 'operator', '运营商'].includes(role)) return 'admin';
   if (['offline', '实体', '线下'].includes(role)) return 'offline';
+  if (['merchant', '商家', '兑换'].includes(role)) return 'merchant';
   return '';
 }
 
@@ -60,8 +61,8 @@ function ask(prompt) {
 
 async function inputs() {
   const args = process.argv.slice(2);
-  const role = normalizeRole(args.shift() || await ask('端类型（admin=运营商，offline=线下实体端）: '));
-  if (!role) throw new Error('端类型只能是 admin 或 offline');
+  const role = normalizeRole(args.shift() || await ask('端类型（admin=运营商，offline=线下实体端，merchant=商家兑换端）: '));
+  if (!role) throw new Error('端类型只能是 admin、offline 或 merchant');
 
   // Keep the old "role phone..." form as an add operation.
   let action = normalizeAction(args[0]);
