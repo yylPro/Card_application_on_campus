@@ -220,7 +220,10 @@ const campusPasswordMatches = (password, account) => {
   const expected = Buffer.from(account.passwordHash, "hex");
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 };
-const campusBuiltinStaffPhoneHashes = [
+// Keep the test/authorized allowlist in the function package itself. The
+// WeChat cloud-function uploader does not apply arbitrary `envVariables`
+// fields from config.json as process.env values in every deployment mode.
+const campusBuiltinCompanyPhoneHashes = [
   '5d8c1379cdc1549ad2f4b0c8d80f9b3d0cdb48c2e305d32b450334160885a6d9',
   '91bfb9037b45bca2c94ad62c883acd6cb5a1f992a0e6d37366d7f7a7a63f8a88',
   '7b7720561af334aa42fe0a08fbdcba2fc01e7ffde472c53248db8aaf51af90d1',
@@ -228,9 +231,37 @@ const campusBuiltinStaffPhoneHashes = [
   '6efbd11efcd61924e412d31fe87917b4b88b3b6183967fda5d064efef669759a',
   '322c34aaa620caddd6b08ac38ba81dfe5b1118474aae1051ac19c6dd850bede3'
 ];
+const campusBuiltinOperatorPhoneHashes = [
+  ...campusBuiltinCompanyPhoneHashes,
+  'e842f8731cb1f25ff74243c3e5f5952f99cede75e1978917bce90f74868ad1c3',
+  '857700790201de0c5d715e934b88b8fc2fcd120ffbddaf2a30798b0fa2c4c051',
+  'd786bae3d6432af2ab50bdad0f9644e434f4686a3ff37d6db5037b00d2b08750',
+  'a4ab232eb5776f18e40bf834285bda3ca44560a423e20d91ae0038649c1995c0',
+  'db47ddd776499393621adc84d0f3d6ddf1fcd0b0bbb3687e7ab96f80b8fd7332',
+  '7041f38f05d3e19bbd4fb2c7e99473f9ab4c0db16ba06893c4e5623073a9bbec',
+  'd8b84d5db7c66376f565c9bbb5bf54b6fb64d1bb74d7e805541d3da71c653f37',
+  '4eee0f6a0ef59b392b6e19450fcab614bebfb4b6081f5d6eaf919c95d86c6847',
+  '7ea534bbfa75851009858147b1d3850a9b0cf8c1c46413bdd59dc0d86d1ad0da',
+  'cc1b0e35c3bacdd5c5d0709c953fdbf641c2eedb33a3cdc210a25c444f03f6a6',
+  '816d4e07b4d5f8aa0f5583d0c3531ab84f111c2fd4a21d14b633a9275e15ffac'
+];
+const campusBuiltinOutletPhoneHashes = [
+  ...campusBuiltinCompanyPhoneHashes,
+  '0f895527cf65770e626f1451314419cdf6709fbac93d4e436958b630fe4a9cdf',
+  '412d65b4d8f37676654685a6a525363a8a635ed140a69ac30a30f344ae0dd3b1',
+  '19ce888df073b395a5a605738722e130f41508e7fae3f0293eafc588756bf24d',
+  '76a3e1b7454016b078cc39a3c45fadd0ee3823fc345738d7f716d561f88d64bc',
+  'dc0b95887bfd9b871d1e13a8934d62cb577e8992b950a6d80784a0ba2702415a',
+  '22ee7e35462d41438a844f3f222fec3c32eb356a5c7c9aa59d578c91a77562e6',
+  '8424031f605604f5543db569c0e005bf1742349d433dc09e7763ecb07c67e0be',
+  '8f2d1dbc18dd5867e2a7f6db9110c24d5214089ff680d01b03190189eeda0159',
+  'fd9c524ff21e5dd5f7f2ed93177f5aea616f37aaab779441d2f850e56c216698',
+  'aa203253a80f25c968cfa3699254615dca7355e09fba43b659de21dd76a637c3'
+];
 const campusAuthorizedPhoneHashes = (role) => {
   const roleKey = campusRole(role) === "outlet" ? "CAMPUS_OUTLET_PHONE_HASHES" : "CAMPUS_OPERATOR_PHONE_HASHES";
-  return new Set([...campusBuiltinStaffPhoneHashes, process.env.CAMPUS_STAFF_PHONE_HASHES, process.env[roleKey]].flatMap((value) => String(value || "").split(",")).map((value) => value.trim().toLowerCase()).filter(Boolean));
+  const builtins = campusRole(role) === "outlet" ? campusBuiltinOutletPhoneHashes : campusBuiltinOperatorPhoneHashes;
+  return new Set([...builtins, process.env.CAMPUS_STAFF_PHONE_HASHES, process.env[roleKey]].flatMap((value) => String(value || "").split(",")).map((value) => value.trim().toLowerCase()).filter(Boolean));
 };
 const campusPhoneAuthorized = (phone, role) => {
   const hashes = campusAuthorizedPhoneHashes(role);

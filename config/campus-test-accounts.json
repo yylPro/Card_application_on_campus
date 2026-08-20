@@ -1,0 +1,33 @@
+{
+  "notice": "仅供开发、隔离内测和自动化测试使用，不得用于真实开户、实名登记或生产业务。",
+  "students": [
+    { "phone": "13800000001", "idCard": "110101199001010015" },
+    { "phone": "13800000002", "idCard": "110101199001010023" },
+    { "phone": "13800000003", "idCard": "110101199001010031" },
+    { "phone": "13800000004", "idCard": "11010119900101004X" },
+    { "phone": "13800000005", "idCard": "110101199001010058" },
+    { "phone": "13800000006", "idCard": "110101199001010066" },
+    { "phone": "13800000007", "idCard": "110101199001010074" },
+    { "phone": "13800000008", "idCard": "110101199001010082" },
+    { "phone": "13800000009", "idCard": "110101199001010090" },
+    { "phone": "13800000010", "idCard": "110101199001010103" }
+  ],
+  "merchants": {
+    "password": "MerchTest2026",
+    "accounts": [
+      "15700000001", "15700000002", "15700000003", "15700000004", "15700000005",
+      "15700000006", "15700000007", "15700000008", "15700000009", "15700000010"
+    ],
+    "note": "当前服务器版本没有独立商家登录接口；这些账号供商家端/小程序内测资料使用。"
+  },
+  "gridAccounts": [
+    { "grid": "凤岭北", "operatorPhone": "15900000001", "outletPhone": "18900000001", "password": "GridTest2026" },
+    { "grid": "仙葫", "operatorPhone": "15900000002", "outletPhone": "18900000002", "password": "GridTest2026" },
+    { "grid": "建政", "operatorPhone": "15900000003", "outletPhone": "18900000003", "password": "GridTest2026" },
+    { "grid": "新竹", "operatorPhone": "15900000004", "outletPhone": "18900000004", "password": "GridTest2026" },
+    { "grid": "中山", "operatorPhone": "15900000005", "outletPhone": "18900000005", "password": "GridTest2026" },
+    { "grid": "津头", "operatorPhone": "15900000006", "outletPhone": "18900000006", "password": "GridTest2026" },
+    { "grid": "南湖", "operatorPhone": "15900000007", "outletPhone": "18900000007", "password": "GridTest2026" },
+    { "grid": "凤岭南", "operatorPhone": "15900000008", "outletPhone": "18900000008", "password": "GridTest2026" }
+  ]
+}
