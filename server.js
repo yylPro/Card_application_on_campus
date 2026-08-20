@@ -2027,6 +2027,8 @@ function isPublicStaticFile(file) {
   const relative = path.relative(ROOT, file).split(path.sep).join('/');
   if (!relative || relative.startsWith('../') || path.isAbsolute(relative)) return false;
   if (publicStaticFiles.has(relative)) return true;
+  // WeChat domain verification files are random 32-character hex TXT files at the site root.
+  if (/^[a-f0-9]{32}\.txt$/i.test(relative)) return true;
   return relative.startsWith('miniprogram/') && publicMiniprogramExtensions.has(path.extname(relative).toLowerCase());
 }
 
