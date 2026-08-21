@@ -654,6 +654,7 @@ function wechatAccountStore(db, role) {
 
 function wechatRoleAuthorized(phone, role) {
   const digest = hashPhone(phone);
+  if (WECHAT_BRANCH_PHONE_HASHES.has(digest)) return ['operator', 'offline', 'merchant'].includes(role);
   if (role === 'operator') return ADMIN_PHONE_HASHES.has(digest);
   if (role === 'offline') return OFFLINE_PHONE_HASHES.has(digest);
   if (role === 'merchant') return MERCHANT_PHONE_HASHES.has(digest);
@@ -1076,7 +1077,14 @@ async function api(req, res, url) {
 
     if (req.method === 'POST' && rolePath === 'student/records') {
       const student = requireStudent(req, res); if (!student) return;
-      const records = [...db.orders, ...db.tickets].filter((record) => record.openid === student.user).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map((record) => ({ id: record.id, type: record.type, status: record.status, verificationStatus: record.verificationStatus, createdAt: record.createdAt, appointment: record.appointment || '', operator: record.operator || '', selectedNumber: record.selectedNumber || '', campusNumber: record.campusNumber || '', address: record.address || '', deliveryStatus: record.deliveryStatus, activationStatus: record.activationStatus, completionConfirmedAt: record.completionConfirmedAt || '', offline: record.offlineFeatureCode ? { location: record.offlineLocation || '', featureCode: record.offlineFeatureCode, verifiedAt: record.offlineVerifiedAt || '', activated: record.activationStatus === 'activated' } : null }));
+      const records = await Promise.all([...db.orders, ...db.tickets].filter((record) => record.openid === student.user).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(async (record) => {
+        const featureCode = record.offlineFeatureCode || '';
+        let featureQrDataUrl = '';
+        if (featureCode) {
+          try { featureQrDataUrl = await QRCode.toDataURL(featureCode, { width: 520, margin: 2, errorCorrectionLevel: 'M' }); } catch { featureQrDataUrl = ''; }
+        }
+        return { id: record.id, type: record.type, status: record.status, verificationStatus: record.verificationStatus, createdAt: record.createdAt, appointment: record.appointment || '', operator: record.operator || '', selectedNumber: record.selectedNumber || '', campusNumber: record.campusNumber || '', address: record.address || '', outletAddress: record.offlineLocation || '', featureCode, featureQrDataUrl, deliveryStatus: record.deliveryStatus, activationStatus: record.activationStatus, completionConfirmedAt: record.completionConfirmedAt || '', offline: featureCode ? { location: record.offlineLocation || '', featureCode, verifiedAt: record.offlineVerifiedAt || '', activated: record.activationStatus === 'activated' } : null };
+      }));
       return json(res, 200, { records });
     }
 
