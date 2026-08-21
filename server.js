@@ -1077,7 +1077,18 @@ async function api(req, res, url) {
 
     if (req.method === 'POST' && rolePath === 'student/records') {
       const student = requireStudent(req, res); if (!student) return;
-      const records = await Promise.all([...db.orders, ...db.tickets].filter((record) => record.openid === student.user).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(async (record) => {
+      const studentRecords = [...db.orders, ...db.tickets].filter((record) => record.openid === student.user).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      let recordsChanged = false;
+      for (const record of studentRecords) {
+        if (!record.offlineFeatureCode && String(record.type || '').includes('校园')) {
+          record.offlineFeatureCode = uniqueFeatureCode(db);
+          record.offlineLocation = record.offlineLocation || db.settings.offlineVerificationAddress || '';
+          record.offlineAssignedAt = record.offlineAssignedAt || new Date().toISOString();
+          recordsChanged = true;
+        }
+      }
+      if (recordsChanged) writeDb(db);
+      const records = await Promise.all(studentRecords.map(async (record) => {
         const featureCode = record.offlineFeatureCode || '';
         let featureQrDataUrl = '';
         if (featureCode) {
